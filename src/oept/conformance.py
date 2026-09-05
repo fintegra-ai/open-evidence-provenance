@@ -19,7 +19,18 @@ from .verify import verify_bundle, verify_bundle_dir
 
 
 def default_corpus_dir() -> Path:
-    """Packaged conformance corpus (repo layout)."""
+    """Packaged conformance corpus (installed data or repo checkout)."""
+    try:
+        from importlib import resources
+
+        anchor = resources.files("oept.data") / "conformance"
+        try:
+            if anchor.is_dir():
+                return Path(str(anchor))
+        except (OSError, ValueError):
+            pass
+    except (ImportError, ModuleNotFoundError, TypeError):
+        pass
     here = Path(__file__).resolve().parent
     candidates = [
         here.parent.parent / "conformance" / "fixtures",

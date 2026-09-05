@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/oept/schema/fact/0.1",
+  "title": "OEPT Fact",
+  "description": "A named, subject-scoped claim slot with append-only revisions. Decimal quantities are strings. Pre-1.0 provisional namespace.",
+  "type": "object",
+  "required": ["id", "fact_type", "subject", "revisions"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "fact_type": { "type": "string", "minLength": 1 },
+    "subject": { "type": "string", "minLength": 1 },
+    "revisions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "fact_id", "value", "value_type", "observed_at"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "fact_id": { "type": "string", "minLength": 1 },
+          "value": true,
+          "value_type": { "type": "string", "enum": ["string", "decimal", "integer", "date", "boolean", "null"] },
+          "observed_at": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

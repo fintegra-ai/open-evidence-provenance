@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/oept/schema/provenance-pointer/0.1",
+  "title": "OEPT ProvenancePointer",
+  "description": "Exact locator binding one fact revision to one evidence version. Pre-1.0 provisional namespace.",
+  "type": "object",
+  "required": ["id", "fact_revision_id", "evidence_version_id", "locator_type", "locator", "method"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "fact_revision_id": { "type": "string", "minLength": 1 },
+    "evidence_version_id": { "type": "string", "minLength": 1 },
+    "locator_type": { "type": "string", "minLength": 1 },
+    "locator": { "type": "string", "minLength": 1 },
+    "method": { "type": "string", "minLength": 1 },
+    "note": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
+}

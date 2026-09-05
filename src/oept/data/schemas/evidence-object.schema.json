@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/oept/schema/evidence-object/0.1",
+  "title": "OEPT EvidenceObject",
+  "description": "Logical identity of one source object (the thing, not its bytes). Pre-1.0 provisional namespace.",
+  "type": "object",
+  "required": ["id", "logical_reference"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "logical_reference": { "type": "string", "minLength": 1 },
+    "media_type": { "type": "string", "default": "application/octet-stream" },
+    "created_at": { "type": "string" }
+  },
+  "additionalProperties": false
+}

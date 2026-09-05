@@ -1,12 +1,17 @@
 """Access to the versioned OEPT JSON Schemas.
 
-Schemas live in the top-level ``schemas/`` directory so they are usable
-independently of Python (any JSON Schema validator, any language).
+Canonical files live in top-level ``schemas/`` (usable independently of
+Python). Installed wheels carry byte-identical copies under
+``oept.data.schemas``; the loader prefers package resources so
+``oept schema`` works after ``pip install``, falling back to the
+repository layout for source checkouts. A sync test enforces that both
+copies are identical.
 """
 
 from __future__ import annotations
 
 from functools import cache
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +39,17 @@ _SCHEMA_FILES = {
 
 
 def schemas_dir() -> Path:
-    """Directory holding the schema files (repo layout or installed data)."""
+    """Directory holding the schema files (installed data or checkout)."""
+    try:
+        anchor = resources.files("oept.data.schemas")
+    except (ImportError, ModuleNotFoundError, TypeError):
+        anchor = None
+    if anchor is not None:
+        try:
+            if anchor.is_dir():
+                return Path(str(anchor))
+        except (OSError, ValueError):
+            pass
     here = Path(__file__).resolve().parent
     candidates = [
         here.parent.parent / "schemas",

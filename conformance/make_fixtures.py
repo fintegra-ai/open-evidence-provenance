@@ -223,8 +223,34 @@ def main() -> int:
         examples / "valid-unsigned.zip",
     )
 
+    # Mirror the corpus + schemas into package data so installed wheels
+    # carry them (single generation command => no drift at build time).
+    # Marker __init__.py files keep the data importable; they are not
+    # part of the mirrored payload and are recreated here, not copied.
+    pkg_data = ROOT / "src" / "oept" / "data"
+    mirror_tree(ROOT / "conformance" / "fixtures", pkg_data / "conformance")
+    mirror_tree(ROOT / "schemas", pkg_data / "schemas")
+    (pkg_data / "__init__.py").write_text(
+        '"""OEPT package data (schemas, conformance corpus)."""\n',
+        encoding="utf-8",
+    )
+    (pkg_data / "schemas" / "__init__.py").write_text(
+        '"""Versioned OEPT JSON Schemas (installed copies; canonical '
+        'source: top-level schemas/)."""\n',
+        encoding="utf-8",
+    )
+
     print("conformance fixtures written (10) + examples/valid-unsigned.zip")
     return 0
+
+
+def mirror_tree(source: Path, target: Path) -> None:
+    """Byte-exact mirror of a directory tree (package-data copies)."""
+    import shutil as _shutil
+
+    if target.exists():
+        _shutil.rmtree(target)
+    _shutil.copytree(source, target)
 
 
 if __name__ == "__main__":

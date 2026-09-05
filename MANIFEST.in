@@ -1,0 +1,8 @@
+graft schemas
+graft spec
+graft examples
+graft conformance
+graft docs
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store
