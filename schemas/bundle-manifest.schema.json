@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/oept/schema/bundle-manifest/0.1",
+  "title": "OEPT bundle manifest",
+  "description": "Manifest for oept-bundle/0.1 portable evidence bundles. Pre-1.0 provisional namespace.",
+  "type": "object",
+  "required": ["bundle_spec_version", "bundle_id", "created_at", "files"],
+  "properties": {
+    "bundle_spec_version": { "type": "string", "const": "oept-bundle/0.1" },
+    "bundle_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "minLength": 1 },
+    "key_id": { "type": "string" },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256", "size_bytes"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size_bytes": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

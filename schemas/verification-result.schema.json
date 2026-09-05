@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/oept/schema/verification-result/0.1",
+  "title": "OEPT VerificationResult",
+  "description": "Terminal technical verdict of an offline bundle verification. Pre-1.0 provisional namespace.",
+  "type": "object",
+  "required": ["status"],
+  "properties": {
+    "verifier": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["VALID_SIGNED", "VALID_UNSIGNED", "HASH_MISMATCH", "MISSING_FILE", "UNEXPECTED_FILE", "SIGNATURE_INVALID", "SIGNATURE_KEY_UNKNOWN", "UNSUPPORTED_SPEC_VERSION", "UNSAFE_ARCHIVE", "MALFORMED_BUNDLE"]
+    },
+    "bundle_spec_version": { "type": ["string", "null"] },
+    "bundle_id": { "type": ["string", "null"] },
+    "signing_state": { "type": ["string", "null"] },
+    "mismatches": { "type": "array" },
+    "missing": { "type": "array", "items": { "type": "string" } },
+    "unexpected": { "type": "array", "items": { "type": "string" } },
+    "signature_checked": { "type": "boolean" },
+    "trusted_key_id": { "type": ["string", "null"] },
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "scope_note": { "type": "string" }
+  },
+  "additionalProperties": false
+}

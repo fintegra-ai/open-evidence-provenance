@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/oept/schema/evidence-version/0.1",
+  "title": "OEPT EvidenceVersion",
+  "description": "One immutable observation of an EvidenceObject's bytes. Pre-1.0 provisional namespace.",
+  "type": "object",
+  "required": ["id", "object_id", "version_number", "sha256", "size_bytes", "observed_at"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "object_id": { "type": "string", "minLength": 1 },
+    "version_number": { "type": "integer", "minimum": 1 },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "size_bytes": { "type": "integer", "minimum": 0 },
+    "observed_at": { "type": "string", "minLength": 1 },
+    "effective_at": { "type": ["string", "null"] },
+    "transform": { "type": ["object", "null"] },
+    "predecessor_version_id": { "type": ["string", "null"] },
+    "filename": { "type": "string" }
+  },
+  "additionalProperties": false
+}
