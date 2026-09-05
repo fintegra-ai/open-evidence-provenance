@@ -1,0 +1,13 @@
+{
+  "pointers": [
+    {
+      "evidence_version_id": "ever_01",
+      "fact_revision_id": "frev_01",
+      "id": "prov_01",
+      "locator": "line=42",
+      "locator_type": "text_line",
+      "method": "manual-extraction@1.0",
+      "note": "conformance fixture"
+    }
+  ]
+}

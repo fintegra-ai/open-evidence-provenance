@@ -1,0 +1,18 @@
+{
+  "facts": [
+    {
+      "fact_type": "document.total",
+      "id": "fact_01",
+      "revisions": [
+        {
+          "fact_id": "fact_01",
+          "id": "frev_01",
+          "observed_at": "2026-01-01T00:00:00Z",
+          "value": "1250.00",
+          "value_type": "decimal"
+        }
+      ],
+      "subject": "doc:report-2026-001"
+    }
+  ]
+}
