@@ -5,6 +5,7 @@ errors: a tampered bundle yields a result object with a failure status,
 never an exception. Exceptions signal caller misuse, unreadable input, or
 unsupported configuration.
 """
+
 from __future__ import annotations
 
 

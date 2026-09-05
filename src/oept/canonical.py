@@ -13,6 +13,7 @@ set, custom objects — raises CanonicalizationError. Callers serialize
 Decimals as strings and datetimes as UTC ISO-8601 strings BEFORE calling
 into this module; that rule is enforced, not assumed.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -41,9 +42,7 @@ def _check_domain(value: Any, path: str = "$") -> None:
     if isinstance(value, dict):
         for key in value:
             if not isinstance(key, str):
-                raise CanonicalizationError(
-                    f"{path}: non-string dict key {key!r} is not canonical"
-                )
+                raise CanonicalizationError(f"{path}: non-string dict key {key!r} is not canonical")
         for key, item in value.items():
             _check_domain(item, f"{path}.{key}")
         return
@@ -58,9 +57,7 @@ def canonicalize_json(value: Any) -> bytes:
     try:
         result = jcs.canonicalize(value)
     except Exception as exc:
-        raise CanonicalizationError(
-            f"JCS serialization failed: {exc}"
-        ) from exc
+        raise CanonicalizationError(f"JCS serialization failed: {exc}") from exc
     if isinstance(result, str):
         return result.encode("utf-8")
     return bytes(result)

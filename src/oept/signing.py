@@ -9,10 +9,10 @@ These signatures are application-level authenticity marks. They are NOT
 qualified electronic signatures, NOT eIDAS instruments, NOT timestamps,
 and NOT certificate chains.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -59,9 +59,7 @@ def sign_manifest(canonical_manifest: bytes, private_key_pem: bytes) -> bytes:
     except Exception as exc:
         from .errors import ConfigurationError
 
-        raise ConfigurationError(
-            f"cannot load Ed25519 private key: {exc}"
-        ) from exc
+        raise ConfigurationError(f"cannot load Ed25519 private key: {exc}") from exc
     if not isinstance(key, Ed25519PrivateKey):
         from .errors import ConfigurationError
 
@@ -73,17 +71,17 @@ def verify_manifest_signature(
     canonical_manifest: bytes,
     signature: bytes,
     trusted_keys: list[TrustedKey],
-) -> Optional[str]:
+) -> str | None:
     """Return the matching trusted key_id, or None when no key matches.
 
     Every supplied key is tried; invalid signatures are skipped, never
     raised. An empty trust list never verifies.
     """
+    from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import (
         Ed25519PublicKey,
     )
-    from cryptography.exceptions import InvalidSignature
 
     for trusted in trusted_keys:
         try:
@@ -110,28 +108,20 @@ def load_trust_keys(path: object) -> list[TrustedKey]:
     try:
         raw = json.loads(Path(str(path)).read_bytes().decode("utf-8"))
     except Exception as exc:
-        raise ConfigurationError(
-            f"cannot read trust-keys file: {exc}"
-        ) from exc
+        raise ConfigurationError(f"cannot read trust-keys file: {exc}") from exc
     if not isinstance(raw, list) or not raw:
-        raise ConfigurationError(
-            "trust-keys file must be a non-empty JSON list"
-        )
+        raise ConfigurationError("trust-keys file must be a non-empty JSON list")
     keys: list[TrustedKey] = []
     for entry in raw:
         if not isinstance(entry, dict):
-            raise ConfigurationError(
-                "trust-keys entries must be objects")
+            raise ConfigurationError("trust-keys entries must be objects")
         key_id = entry.get("key_id")
         pem = entry.get("public_key_pem")
         if not isinstance(key_id, str) or not key_id:
-            raise ConfigurationError(
-                "trust-keys entry needs a non-empty key_id")
+            raise ConfigurationError("trust-keys entry needs a non-empty key_id")
         if not isinstance(pem, str) or "PUBLIC KEY" not in pem:
-            raise ConfigurationError(
-                f"trust-keys entry {key_id!r} needs a PEM public key")
-        keys.append(TrustedKey(key_id=key_id,
-                               public_key_pem=pem.encode("utf-8")))
+            raise ConfigurationError(f"trust-keys entry {key_id!r} needs a PEM public key")
+        keys.append(TrustedKey(key_id=key_id, public_key_pem=pem.encode("utf-8")))
     if len(keys) > 64:
         raise ConfigurationError("trust-keys file holds at most 64 keys")
     return keys

@@ -3,6 +3,7 @@
 Digests are lowercase hexadecimal strings. These functions hash bytes;
 callers canonicalize structured values via oept.canonical first.
 """
+
 from __future__ import annotations
 
 import hashlib

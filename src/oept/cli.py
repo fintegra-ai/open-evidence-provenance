@@ -8,13 +8,14 @@ Commands:
 
 Exit codes: 0 verified/valid, 1 integrity failure, 2 usage/config error.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 from .bundle import BundleBuilder
 from .errors import ConfigurationError, OeptError, ValidationError
@@ -22,14 +23,14 @@ from .models import VerificationResult
 from .signing import load_trust_keys, sign_manifest
 from .verify import verify_bundle
 
-FOOTER = ("Technical verification only — not a legal, compliance, "
-          "or factual conclusion.")
+FOOTER = "Technical verification only — not a legal, compliance, or factual conclusion."
 
 
 def _render_human(bundle_label: str, result: VerificationResult) -> str:
     if result.status == "VALID_SIGNED":
-        signature = (f"SIGNED (trusted key: {result.trusted_key_id})"
-                     if result.trusted_key_id else "SIGNED")
+        signature = (
+            f"SIGNED (trusted key: {result.trusted_key_id})" if result.trusted_key_id else "SIGNED"
+        )
     elif result.status == "VALID_UNSIGNED":
         signature = "NOT PRESENT"
     elif result.status == "SIGNATURE_KEY_UNKNOWN":
@@ -87,19 +88,16 @@ def _iter_input_files(root: Path) -> dict[str, bytes]:
         if path.is_dir():
             continue
         if path.is_symlink():
-            raise ValidationError(
-                f"input contains symlink (refusing to bundle): {path}")
+            raise ValidationError(f"input contains symlink (refusing to bundle): {path}")
         try:
             name = path.relative_to(root).as_posix()
         except ValueError as exc:
             raise ValidationError(f"unresolvable input path: {path}") from exc
         if name == "manifest.json" or name.startswith("signatures/"):
-            raise ValidationError(
-                f"reserved bundle member in input directory: {name!r}")
+            raise ValidationError(f"reserved bundle member in input directory: {name!r}")
         members[name] = path.read_bytes()
     if "facts.json" not in members or "provenance.json" not in members:
-        raise ValidationError(
-            "input directory must contain facts.json and provenance.json")
+        raise ValidationError("input directory must contain facts.json and provenance.json")
     return members
 
 
@@ -125,8 +123,7 @@ def cmd_bundle(args: argparse.Namespace) -> int:
             try:
                 private_key = Path(args.sign).read_bytes()
             except OSError as exc:
-                print(f"oept: error: cannot read signing key: {exc}",
-                      file=sys.stderr)
+                print(f"oept: error: cannot read signing key: {exc}", file=sys.stderr)
                 return 2
             try:
                 signature = sign_manifest(builder.manifest_bytes(), private_key)
@@ -177,37 +174,33 @@ def cmd_schema(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="oept", description="Open Evidence Provenance Toolkit")
+    parser = argparse.ArgumentParser(prog="oept", description="Open Evidence Provenance Toolkit")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_verify = sub.add_parser("verify", help="verify a bundle offline")
     p_verify.add_argument("bundle", help="bundle .zip file")
-    p_verify.add_argument("--json", action="store_true",
-                          help="machine-readable output")
-    p_verify.add_argument("--trust-keys",
-                          help="JSON trust-keys file for signatures")
+    p_verify.add_argument("--json", action="store_true", help="machine-readable output")
+    p_verify.add_argument("--trust-keys", help="JSON trust-keys file for signatures")
     p_verify.set_defaults(func=cmd_verify)
 
     p_bundle = sub.add_parser("bundle", help="build a bundle from a directory")
     p_bundle.add_argument("directory", help="evidence directory to package")
     p_bundle.add_argument("--output", required=True, help="output .zip path")
-    p_bundle.add_argument("--bundle-id", default="",
-                          help="bundle identifier (default: directory name)")
-    p_bundle.add_argument("--created-at", default="",
-                          help="ISO-8601 timestamp (default: now, UTC)")
-    p_bundle.add_argument("--sign", default="",
-                          help="Ed25519 private key PEM file for signing")
-    p_bundle.add_argument("--key-id", default="",
-                          help="key identifier label (required with --sign)")
+    p_bundle.add_argument(
+        "--bundle-id", default="", help="bundle identifier (default: directory name)"
+    )
+    p_bundle.add_argument("--created-at", default="", help="ISO-8601 timestamp (default: now, UTC)")
+    p_bundle.add_argument("--sign", default="", help="Ed25519 private key PEM file for signing")
+    p_bundle.add_argument(
+        "--key-id", default="", help="key identifier label (required with --sign)"
+    )
     p_bundle.set_defaults(func=cmd_bundle)
 
     p_conf = sub.add_parser("conformance", help="run the conformance corpus")
-    p_conf.add_argument("--dir", default="",
-                        help="conformance corpus directory "
-                             "(default: packaged corpus)")
-    p_conf.add_argument("--json", action="store_true",
-                        help="machine-readable output")
+    p_conf.add_argument(
+        "--dir", default="", help="conformance corpus directory (default: packaged corpus)"
+    )
+    p_conf.add_argument("--json", action="store_true", help="machine-readable output")
     p_conf.set_defaults(func=cmd_conformance)
 
     p_schema = sub.add_parser("schema", help="inspect JSON Schemas")
@@ -216,7 +209,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     try:
         args = parser.parse_args(argv)

@@ -67,6 +67,12 @@ strict = true
 warn_unused_ignores = true
 show_error_codes = true
 
+# Third-party packages without type stubs. Our own code stays strict;
+# only the untyped boundary is silenced (standard practice).
+[[tool.mypy.overrides]]
+module = ["jcs.*", "jsonschema.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

@@ -5,14 +5,15 @@ plain JSON-compatible values. Datetimes are UTC ISO-8601 strings with a
 trailing ``Z`` (seconds precision). Decimal quantities are strings.
 Digests are lowercase hex SHA-256.
 
-Nothing here names invoices, receivables, debtors, factoring, credit,
-fraud, portfolios, or any commercial workflow.
+Nothing here is domain-specific: the vocabulary stays at the level of
+sources, observations, claims, and traces, and works for arbitrary data.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 
 def utc_now_iso() -> str:
@@ -43,7 +44,7 @@ class EvidenceObject:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "EvidenceObject":
+    def from_dict(cls, data: dict[str, Any]) -> EvidenceObject:
         return cls(
             id=str(data["id"]),
             logical_reference=str(data["logical_reference"]),
@@ -62,9 +63,9 @@ class EvidenceVersion:
     sha256: str
     size_bytes: int
     observed_at: str
-    effective_at: Optional[str] = None
-    transform: Optional[dict[str, Any]] = None
-    predecessor_version_id: Optional[str] = None
+    effective_at: str | None = None
+    transform: dict[str, Any] | None = None
+    predecessor_version_id: str | None = None
     filename: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -82,7 +83,7 @@ class EvidenceVersion:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "EvidenceVersion":
+    def from_dict(cls, data: dict[str, Any]) -> EvidenceVersion:
         return cls(
             id=str(data["id"]),
             object_id=str(data["object_id"]),
@@ -107,7 +108,7 @@ class ProvenancePointer:
     locator_type: str
     locator: str
     method: str
-    note: Optional[str] = None
+    note: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -121,7 +122,7 @@ class ProvenancePointer:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ProvenancePointer":
+    def from_dict(cls, data: dict[str, Any]) -> ProvenancePointer:
         return cls(
             id=str(data["id"]),
             fact_revision_id=str(data["fact_revision_id"]),
@@ -142,13 +143,13 @@ class Fact:
     subject: str
 
     def to_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "fact_type": self.fact_type,
-                "subject": self.subject}
+        return {"id": self.id, "fact_type": self.fact_type, "subject": self.subject}
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Fact":
-        return cls(id=str(data["id"]), fact_type=str(data["fact_type"]),
-                   subject=str(data["subject"]))
+    def from_dict(cls, data: dict[str, Any]) -> Fact:
+        return cls(
+            id=str(data["id"]), fact_type=str(data["fact_type"]), subject=str(data["subject"])
+        )
 
 
 @dataclass(frozen=True)
@@ -171,7 +172,7 @@ class FactRevision:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "FactRevision":
+    def from_dict(cls, data: dict[str, Any]) -> FactRevision:
         return cls(
             id=str(data["id"]),
             fact_id=str(data["fact_id"]),
@@ -213,7 +214,7 @@ class RuleTrace:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "RuleTrace":
+    def from_dict(cls, data: dict[str, Any]) -> RuleTrace:
         return cls(
             id=str(data["id"]),
             rule_id=str(data["rule_id"]),
@@ -232,14 +233,14 @@ class VerificationResult:
     """Terminal technical verdict for one bundle verification."""
 
     status: str
-    bundle_spec_version: Optional[str] = None
-    bundle_id: Optional[str] = None
-    signing_state: Optional[str] = None
+    bundle_spec_version: str | None = None
+    bundle_id: str | None = None
+    signing_state: str | None = None
     mismatches: list[dict[str, Any]] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
     unexpected: list[str] = field(default_factory=list)
     signature_checked: bool = False
-    trusted_key_id: Optional[str] = None
+    trusted_key_id: str | None = None
     notes: list[str] = field(default_factory=list)
 
     @property

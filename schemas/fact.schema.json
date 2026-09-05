@@ -19,7 +19,8 @@
           "id": { "type": "string", "minLength": 1 },
           "fact_id": { "type": "string", "minLength": 1 },
           "value": true,
-          "value_type": { "type": "string", "enum": ["string", "decimal", "integer", "date", "boolean", "null"] }
+          "value_type": { "type": "string", "enum": ["string", "decimal", "integer", "date", "boolean", "null"] },
+          "observed_at": { "type": "string", "minLength": 1 }
         },
         "additionalProperties": false
       }

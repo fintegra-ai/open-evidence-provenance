@@ -6,11 +6,12 @@ Each fixture directory under the corpus root contains a ``bundle.zip``
 terminal status. Trust keys for signed fixtures live in the fixture
 directory (``trust-keys.json``) and are TEST ONLY material.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .errors import OeptError
 from .signing import TrustedKey, load_trust_keys
@@ -30,7 +31,7 @@ def default_corpus_dir() -> Path:
     raise OeptError("OEPT conformance corpus not found")
 
 
-def run_conformance(corpus_dir: Optional[Path] = None) -> dict[str, Any]:
+def run_conformance(corpus_dir: Path | None = None) -> dict[str, Any]:
     """Run every fixture. Returns {total, passed, failed, cases}."""
     root = Path(corpus_dir) if corpus_dir else default_corpus_dir()
     if not root.is_dir():
@@ -59,5 +60,4 @@ def run_conformance(corpus_dir: Optional[Path] = None) -> dict[str, Any]:
         passed += 1 if ok else 0
         cases.append((fixture.name, got, str(want), ok))
     total = len(cases)
-    return {"total": total, "passed": passed, "failed": total - passed,
-            "cases": cases}
+    return {"total": total, "passed": passed, "failed": total - passed, "cases": cases}

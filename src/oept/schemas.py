@@ -3,9 +3,10 @@
 Schemas live in the top-level ``schemas/`` directory so they are usable
 independently of Python (any JSON Schema validator, any language).
 """
+
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -50,12 +51,11 @@ def list_schemas() -> list[str]:
     return list(SCHEMA_NAMES)
 
 
-@lru_cache(maxsize=None)
+@cache
 def load_schema(name: str) -> dict[str, Any]:
     """Load one schema by short name (e.g. ``bundle-manifest``)."""
     if name not in _SCHEMA_FILES:
-        raise OeptError(
-            f"unknown schema {name!r}; known: {', '.join(SCHEMA_NAMES)}")
+        raise OeptError(f"unknown schema {name!r}; known: {', '.join(SCHEMA_NAMES)}")
     import json
 
     path = schemas_dir() / _SCHEMA_FILES[name]
@@ -73,5 +73,6 @@ def validate_against_schema(name: str, value: Any) -> list[str]:
 
     schema = load_schema(name)
     validator = jsonschema.Draft202012Validator(schema)
-    return [f"{'/'.join(str(p) for p in e.path)}: {e.message}"
-            for e in validator.iter_errors(value)]
+    return [
+        f"{'/'.join(str(p) for p in e.path)}: {e.message}" for e in validator.iter_errors(value)
+    ]

@@ -2,6 +2,7 @@
 
 Intentionally tiny. Everything else is internal and may change.
 """
+
 from __future__ import annotations
 
 from .bundle import BundleBuilder, build_bundle
