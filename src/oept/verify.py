@@ -129,6 +129,37 @@ def _read_member(zf: zipfile.ZipFile, name: str) -> bytes:
         return handle.read()
 
 
+class _ManifestParseError(OeptError):
+    """Manifest bytes cannot be parsed into a JSON object."""
+
+
+def _loads_manifest(data: bytes) -> dict[str, Any]:
+    """Parse manifest JSON, rejecting duplicate object member names.
+
+    The stdlib parser silently keeps the last duplicate, which would let
+    a hostile manifest smuggle two different ``files`` tables past a
+    naive reader. Duplicates fail closed as malformed.
+    """
+
+    def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise _ManifestParseError(f"duplicate JSON member in manifest: {key!r}")
+            result[key] = value
+        return result
+
+    try:
+        parsed = json.loads(data.decode("utf-8"), object_pairs_hook=_no_duplicates)
+    except UnicodeDecodeError as exc:
+        raise _ManifestParseError(f"manifest is not UTF-8: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise _ManifestParseError(f"manifest is not JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise _ManifestParseError("manifest JSON value must be an object")
+    return parsed
+
+
 def _manifest_schema_errors(manifest: object) -> list[str]:
     errors: list[str] = []
     if not isinstance(manifest, dict):
@@ -153,6 +184,8 @@ def _manifest_schema_errors(manifest: object) -> list[str]:
                 if path in seen:
                     errors.append(f"manifest lists duplicate path: {path!r}")
                 seen.add(path)
+                if path in ("manifest.json", "signatures/manifest.sig"):
+                    errors.append(f"manifest must not list envelope member: {path!r}")
                 reason = _member_is_safe(path)
                 if reason is not None:
                     errors.append(f"manifest lists unsafe path: {reason}")
@@ -306,6 +339,75 @@ def _verify_signature(
     )
 
 
+def _envelope_violation(data: bytes) -> str | None:
+    """Detect bytes outside the ZIP central-directory envelope.
+
+    Returns a human-readable reason, or None when the archive starts with
+    a local-file header (or is an empty archive) and ends exactly at the
+    end of the central directory. ZIP readers ignore out-of-envelope
+    bytes, so without this check a file could carry unverified bytes
+    while its members verify cleanly.
+
+    Zip64 layouts are assessed the same way via their 64-bit bounds;
+    multi-disk archives and unparseable layouts return None (member-level
+    verification still applies).
+    """
+    import struct
+
+    eocd_sig = b"PK\x05\x06"
+    if len(data) >= 4 and data[:4] not in (b"PK\x03\x04", eocd_sig):
+        return "data precedes the first ZIP record (not a clean archive)"
+    if len(data) < 22:
+        return None
+    window_start = max(0, len(data) - (22 + 65535))
+    eocd_pos = data.rfind(eocd_sig, window_start)
+    if eocd_pos < 0:
+        return None
+    try:
+        (
+            _disk_no,
+            _cd_disk,
+            _cd_records_disk,
+            _cd_records_total,
+            cd_size,
+            cd_offset,
+            comment_len,
+        ) = struct.unpack("<HHHHIIH", data[eocd_pos + 4 : eocd_pos + 22])
+    except struct.error:
+        return None
+    if _disk_no != 0 or _cd_disk != 0:
+        return None  # multi-disk archive: not assessable here
+    if cd_size == 0xFFFFFFFF or cd_offset == 0xFFFFFFFF:
+        # Zip64: the EOCD still ends the file (22 bytes + comment); only
+        # the size/offset fields widen. The 64-bit central-directory
+        # bounds are sanity-checked so a forged locator cannot hide an
+        # inconsistent layout.
+        locator_pos = eocd_pos - 20
+        if locator_pos < 0 or data[locator_pos : locator_pos + 4] != b"PK\x06\x07":
+            return None
+        try:
+            (zip64_eocd_offset,) = struct.unpack("<Q", data[locator_pos + 8 : locator_pos + 16])
+            record = data[zip64_eocd_offset : zip64_eocd_offset + 56]
+            if record[0:4] != b"PK\x06\x06" or len(record) < 56:
+                return None
+            cd_size64, cd_offset64 = struct.unpack("<QQ", record[40:56])
+        except (struct.error, IndexError):
+            return None
+        if cd_offset64 + cd_size64 > locator_pos:
+            return None  # inconsistent layout; let member checks decide
+        if len(data) != eocd_pos + 22 + comment_len:
+            return "trailing data after the central directory"
+        return None
+    expected_end = eocd_pos + 22 + comment_len
+    if expected_end > len(data) or cd_offset + cd_size > eocd_pos:
+        return None  # inconsistent layout; let member checks decide
+    if cd_offset + cd_size != eocd_pos:
+        return "gap between the central directory and its end record"
+    if len(data) != expected_end:
+        return "trailing data after the central directory"
+    return None
+
+
 class _DirReader:
     """Filesystem-directory reader with the same interface as the ZIP path."""
 
@@ -329,6 +431,12 @@ def verify_bundle_bytes(
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:
         return _fail("MALFORMED_BUNDLE", [f"not a readable ZIP archive: {exc}"])
+    envelope_problem = _envelope_violation(data)
+    if envelope_problem is not None:
+        # Bytes outside the central-directory envelope are invisible to
+        # ZIP readers: the file could carry unverified content while its
+        # members verify cleanly. Fail closed, not silent.
+        return _fail("MALFORMED_BUNDLE", [envelope_problem])
     with archive as zf:
         problem = _inspect_archive(zf, opts)
         if problem is not None:
@@ -337,9 +445,9 @@ def verify_bundle_bytes(
         if "manifest.json" not in names:
             return _fail("MALFORMED_BUNDLE", ["manifest.json not present"])
         try:
-            manifest = json.loads(_read_member(zf, "manifest.json").decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            return _fail("MALFORMED_BUNDLE", [f"manifest.json is not readable JSON: {exc}"])
+            manifest = _loads_manifest(_read_member(zf, "manifest.json"))
+        except _ManifestParseError as exc:
+            return _fail("MALFORMED_BUNDLE", [f"manifest.json unreadable: {exc}"])
         schema_errors = _manifest_schema_errors(manifest)
         if schema_errors:
             return _fail("MALFORMED_BUNDLE", schema_errors)
@@ -409,9 +517,9 @@ def verify_bundle_dir(
     if "manifest.json" not in names:
         return _fail("MALFORMED_BUNDLE", ["manifest.json not present"])
     try:
-        manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return _fail("MALFORMED_BUNDLE", [f"manifest.json is not readable JSON: {exc}"])
+        manifest = _loads_manifest((root / "manifest.json").read_bytes())
+    except _ManifestParseError as exc:
+        return _fail("MALFORMED_BUNDLE", [f"manifest.json unreadable: {exc}"])
     schema_errors = _manifest_schema_errors(manifest)
     if schema_errors:
         return _fail("MALFORMED_BUNDLE", schema_errors)

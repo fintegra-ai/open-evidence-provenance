@@ -74,6 +74,9 @@ Rules:
 7. No duplicate `path` values. Duplicate → `MALFORMED_BUNDLE`.
 8. Every listed path MUST satisfy the path rules in §7.
 9. `key_id`, when present, is an identification label only.
+10. Unknown top-level fields are ignored by verifiers (forward
+    compatibility for minor versions). Unknown fields are never
+    interpreted. File entries stay strict.
 
 ## 6. Signatures (application-level, optional)
 
@@ -142,6 +145,10 @@ abuse is a safety failure, not a content failure).
     `SIGNATURE_KEY_UNKNOWN` / `VALID_UNSIGNED`.
 13. Members are read from ZIP streams; verifiers MUST NOT extract to
     arbitrary filesystem paths.
+14. Verifiers MUST reject files with bytes outside the central-directory
+    envelope (leading garbage, trailing data, gaps): such bytes are
+    invisible to ZIP readers, so a file carrying them must never verify
+    cleanly. Legitimate ZIP comments remain valid.
 
 ## 11. Versioning
 

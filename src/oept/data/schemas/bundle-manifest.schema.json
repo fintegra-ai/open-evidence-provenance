@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/oept/schema/bundle-manifest/0.1",
   "title": "OEPT bundle manifest",
-  "description": "Manifest for oept-bundle/0.1 portable evidence bundles. Pre-1.0 provisional namespace.",
+  "description": "Manifest for oept-bundle/0.1 portable evidence bundles. Unknown top-level fields are ignored by verifiers (forward compatibility); file entries are strict. Pre-1.0 provisional namespace.",
   "type": "object",
   "required": ["bundle_spec_version", "bundle_id", "created_at", "files"],
   "properties": {
@@ -23,6 +23,5 @@
         "additionalProperties": false
       }
     }
-  },
-  "additionalProperties": false
+  }
 }

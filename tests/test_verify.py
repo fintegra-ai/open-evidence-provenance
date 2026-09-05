@@ -6,6 +6,8 @@ import io
 import json
 import zipfile
 
+import pytest
+
 from oept.bundle import (
     FIXED_EXTERNAL_ATTR,
     FIXED_ZIP_DATE_TIME,
@@ -214,6 +216,139 @@ def test_malformed_manifest(tmp_path):
     assert result.status == "MALFORMED_BUNDLE"
 
 
+def test_duplicate_json_keys_in_manifest(tmp_path):
+    raw = (
+        b'{"bundle_spec_version":"oept-bundle/0.1","bundle_id":"x",'
+        b'"created_at":"2026-01-01T00:00:00Z","files":[],'
+        b'"files":[{"path":"facts.json","sha256":"' + b"0" * 64 + b'"}]}'
+    )
+    blob = _replace_member(_zip_bytes(_base()), "manifest.json", raw)
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "MALFORMED_BUNDLE"
+    assert any("duplicate" in note for note in result.notes)
+
+
+def _manifest_with(members_blob: bytes, mutate) -> bytes:
+    import json as _json
+
+    source = zipfile.ZipFile(io.BytesIO(members_blob))
+    manifest = _json.loads(source.read("manifest.json"))
+    mutate(manifest)
+    members = {
+        info.filename: source.read(info.filename)
+        for info in source.infolist()
+        if info.filename != "manifest.json"
+    }
+    from oept.canonical import canonicalize_json as _canonical
+
+    members["manifest.json"] = _canonical(manifest)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(members):
+            archive.writestr(path, members[path])
+    return buffer.getvalue()
+
+
+def test_manifest_listing_itself_is_malformed(tmp_path):
+    blob = _manifest_with(
+        _zip_bytes(_base()),
+        lambda manifest: manifest["files"].append(
+            {"path": "manifest.json", "sha256": "0" * 64, "size_bytes": 1}
+        ),
+    )
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "MALFORMED_BUNDLE"
+
+
+def test_manifest_listing_signature_is_malformed(tmp_path):
+    blob = _manifest_with(
+        _zip_bytes(_base()),
+        lambda manifest: manifest["files"].append(
+            {
+                "path": "signatures/manifest.sig",
+                "sha256": "0" * 64,
+                "size_bytes": 1,
+            }
+        ),
+    )
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "MALFORMED_BUNDLE"
+
+
+def test_unknown_manifest_fields_ignored(tmp_path):
+    blob = _manifest_with(
+        _zip_bytes(_base()),
+        lambda manifest: manifest.update({"future_field": {"a": [1, 2]}}),
+    )
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "VALID_UNSIGNED"
+
+
+def test_trailing_data_after_central_directory(tmp_path):
+    blob = _zip_bytes(_base()) + b"\x00" * 64
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "MALFORMED_BUNDLE"
+    assert any("trailing" in note for note in result.notes)
+
+
+def test_leading_data_before_first_record(tmp_path):
+    blob = b"JUNK" + _zip_bytes(_base())
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "MALFORMED_BUNDLE"
+
+
+def test_hostile_member_names(tmp_path):
+    hostile = [
+        "//server/share.txt",
+        "evidence\\..\\evil.txt",
+        "./evidence/a.txt",
+        "evidence//b.txt",
+    ]
+    for name in hostile:
+        blob = _append_member(_zip_bytes(_base()), name, b"x")
+        result = verify_bundle(_write(tmp_path, blob))
+        assert result.status in ("UNSAFE_ARCHIVE", "MALFORMED_BUNDLE"), name
+
+
+def test_case_sensitive_member_names(tmp_path):
+    # EVIDENCE/a.txt is a different, undeclared member — never confused
+    # with evidence/a.txt.
+    blob = _append_member(_zip_bytes(_base()), "EVIDENCE/a.txt", b"x")
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "UNEXPECTED_FILE"
+
+
+def test_bare_directory_entry_rejected(tmp_path):
+    buffer = io.BytesIO(_zip_bytes(_base()))
+    with zipfile.ZipFile(buffer, "a") as archive:
+        archive.writestr(zipfile.ZipInfo("evidence/subdir/"), b"")
+    result = verify_bundle(_write(tmp_path, buffer.getvalue()))
+    assert result.status == "UNSAFE_ARCHIVE"
+
+
+def test_configurable_limits_enforced(tmp_path):
+    blob = _zip_bytes(_base())
+    assert (
+        verify_bundle_bytes(blob, options=VerifierOptions(max_entries=2)).status == "UNSAFE_ARCHIVE"
+    )
+    assert (
+        verify_bundle_bytes(blob, options=VerifierOptions(max_single_member_bytes=1)).status
+        == "UNSAFE_ARCHIVE"
+    )
+    assert (
+        verify_bundle_bytes(blob, options=VerifierOptions(max_total_uncompressed_bytes=5)).status
+        == "UNSAFE_ARCHIVE"
+    )
+
+
+def test_zip_comment_is_legitimate(tmp_path):
+    buffer = io.BytesIO(_zip_bytes(_base()))
+    with zipfile.ZipFile(buffer, "a") as archive:
+        archive.comment = b"legitimate archive comment"
+    result = verify_bundle(_write(tmp_path, buffer.getvalue()))
+    assert result.status == "VALID_UNSIGNED"
+
+
 def test_not_a_zip(tmp_path):
     target = tmp_path / "nope.zip"
     target.write_bytes(b"definitely not a zip file")
@@ -226,6 +361,24 @@ def test_result_serializes_to_schema(tmp_path):
 
     result = verify_bundle(_write(tmp_path, _zip_bytes(_base())))
     assert validate_against_schema("verification-result", result.to_dict()) == []
+
+
+def test_duplicate_trust_key_ids_rejected(tmp_path):
+    from oept.errors import ConfigurationError
+    from oept.signing import load_trust_keys
+
+    _private_pem, public_pem = generate_keypair()
+    trust_file = tmp_path / "trust.json"
+    trust_file.write_text(
+        json.dumps(
+            [
+                {"key_id": "same", "public_key_pem": public_pem.decode()},
+                {"key_id": "same", "public_key_pem": public_pem.decode()},
+            ]
+        )
+    )
+    with pytest.raises(ConfigurationError):
+        load_trust_keys(trust_file)
 
 
 def test_verify_unpacked_directory(tmp_path):

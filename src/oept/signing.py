@@ -112,6 +112,7 @@ def load_trust_keys(path: object) -> list[TrustedKey]:
     if not isinstance(raw, list) or not raw:
         raise ConfigurationError("trust-keys file must be a non-empty JSON list")
     keys: list[TrustedKey] = []
+    seen_ids: set[str] = set()
     for entry in raw:
         if not isinstance(entry, dict):
             raise ConfigurationError("trust-keys entries must be objects")
@@ -119,6 +120,9 @@ def load_trust_keys(path: object) -> list[TrustedKey]:
         pem = entry.get("public_key_pem")
         if not isinstance(key_id, str) or not key_id:
             raise ConfigurationError("trust-keys entry needs a non-empty key_id")
+        if key_id in seen_ids:
+            raise ConfigurationError(f"duplicate key_id in trust-keys file: {key_id!r}")
+        seen_ids.add(key_id)
         if not isinstance(pem, str) or "PUBLIC KEY" not in pem:
             raise ConfigurationError(f"trust-keys entry {key_id!r} needs a PEM public key")
         keys.append(TrustedKey(key_id=key_id, public_key_pem=pem.encode("utf-8")))

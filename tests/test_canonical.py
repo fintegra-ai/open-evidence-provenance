@@ -75,3 +75,27 @@ def test_unicode_canonical():
     assert canonicalize_json({"name": "Müller-✓-€"}) == ('{"name":"Müller-✓-€"}'.encode())
     # determinism across key order with non-ASCII content
     assert canonicalize_json({"b": "✓", "a": "€"}) == canonicalize_json({"a": "€", "b": "✓"})
+
+
+def test_large_integers_fail_explicitly():
+    # The JCS backend routes integers through binary64: beyond 2**53
+    # values round silently and magnitudes >= 10**21 render in scientific
+    # notation (forbidden by RFC 8785). OEPT rejects them loudly instead.
+    assert canonicalize_json({"n": 2**53 - 1}) == b'{"n":9007199254740991}'
+    assert canonicalize_json({"n": -(2**53 - 1)}) == (b'{"n":-9007199254740991}')
+    for bad in (2**53, -(2**53), 10**21, 2**200, {"nested": [10**30]}):
+        with pytest.raises(CanonicalizationError):
+            canonicalize_json(bad)
+
+
+def test_accepted_integers_round_trip_exactly():
+    import json
+    import random
+
+    random.seed(20260905)
+    for _ in range(500):
+        n = random.randint(-(2**53 - 1), 2**53 - 1)
+        assert json.loads(canonicalize_json({"n": n})) == {"n": n}
+    assert canonicalize_json({"name": "Müller-✓-€"}) == ('{"name":"Müller-✓-€"}'.encode())
+    # determinism across key order with non-ASCII content
+    assert canonicalize_json({"b": "✓", "a": "€"}) == canonicalize_json({"a": "€", "b": "✓"})
