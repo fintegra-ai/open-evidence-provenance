@@ -58,6 +58,14 @@ def test_cli_usage_error_exit_code_2():
     assert proc.returncode == 2
 
 
+def test_cli_malformed_trust_keys_exit_code_2(tmp_path):
+    bad_keys = tmp_path / "trust.json"
+    bad_keys.write_text('{"not": "a list"}')
+    bundle = ROOT / "examples" / "valid-unsigned.zip"
+    proc = _run_cli("verify", str(bundle), "--trust-keys", str(bad_keys))
+    assert proc.returncode == 2
+
+
 def test_cli_bundle_roundtrip(tmp_path):
     source = ROOT / "examples" / "evidence-project"
     output = tmp_path / "roundtrip.zip"

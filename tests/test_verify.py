@@ -228,6 +228,34 @@ def test_result_serializes_to_schema(tmp_path):
     assert validate_against_schema("verification-result", result.to_dict()) == []
 
 
+def test_verify_unpacked_directory(tmp_path):
+    import zipfile
+
+    from oept.verify import verify_bundle_dir
+
+    blob = _zip_bytes(_base())
+    target = tmp_path / "unpacked"
+    with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+        archive.extractall(target)
+    result = verify_bundle_dir(target)
+    assert result.status == "VALID_UNSIGNED"
+    assert result.ok is True
+
+
+def test_verify_unpacked_directory_tampered(tmp_path):
+    import zipfile
+
+    from oept.verify import verify_bundle_dir
+
+    blob = _zip_bytes(_base())
+    target = tmp_path / "unpacked"
+    with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+        archive.extractall(target)
+    (target / "evidence" / "a.txt").write_bytes(b"tampered")
+    result = verify_bundle_dir(target)
+    assert result.status == "HASH_MISMATCH"
+
+
 # --- local ZIP surgery helpers (tests only) ---
 
 
