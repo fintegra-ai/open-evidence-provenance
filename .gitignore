@@ -10,5 +10,7 @@ venv/
 .mypy_cache/
 .ruff_cache/
 *.zip
-!conformance/fixtures/*.zip
+!examples/*.zip
+!conformance/fixtures/*/bundle.zip
+!src/oept/data/conformance/*/bundle.zip
 .DS_Store
