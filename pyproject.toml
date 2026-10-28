@@ -44,8 +44,8 @@ test = [
 oept = "oept.cli:main"
 
 [project.urls]
-Homepage = "https://example.invalid/oept"
-Repository = "https://example.invalid/oept"
+Homepage = "https://github.com/fintegra-ai/open-evidence-provenance"
+Repository = "https://github.com/fintegra-ai/open-evidence-provenance"
 
 [tool.setuptools.packages.find]
 where = ["src"]
