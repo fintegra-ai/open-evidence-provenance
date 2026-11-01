@@ -1,0 +1,50 @@
+name: Fuzz finding
+description: A fuzz-found crash, hang, or spec-violating verifier behavior. Cannot be closed without a permanent negative conformance vector (Faz C rule).
+labels: ["fuzz", "conformance"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Closure rule (Faz C / SECURITY.md):** this issue cannot be closed
+        until a permanent negative vector exists in `conformance/vectors/`
+        (or the OEVP vector set, for cross-implementation findings) that
+        fails against the pre-fix verifier and passes against the fixed one.
+        A fix without a vector is an incomplete fix.
+  - type: input
+    id: seed
+    label: Fuzz seed / generator commit
+    description: The fixed seed and generator (stdlib random module, test file) that produced the finding.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    label: Reproduction (minimal input or minimized archive)
+    description: Attach the minimized input as text; never paste secret-looking material.
+    validations:
+      required: true
+  - type: dropdown
+    id: class
+    label: Finding class
+    options:
+      - crash (unhandled exception)
+      - hang / resource exhaustion
+      - wrong terminal status (spec violation)
+      - other
+    validations:
+      required: true
+  - type: textarea
+    id: observed_vs_expected
+    label: Observed vs expected terminal status
+    validations:
+      required: true
+  - type: input
+    id: vector
+    label: Permanent negative vector (path + PR link)
+    description: e.g. conformance/vectors/NN-<slug>/ added in PR #...
+    validations:
+      required: true
+  - type: input
+    id: fixing_pr
+    label: Fixing PR
+    validations:
+      required: false

@@ -12,6 +12,8 @@ land in minor releases until 1.0).
   MUST→test traceability, versioning policy, non-guarantees) and
   SECURITY.md notes: explicit non-vulnerability of the test-only conformance
   keypair and the fuzz→vector closure rule.
+- Issue template `fuzz-finding.yml`: fuzz findings cannot be closed without
+  a permanent negative conformance vector (Faz C rule).
 
 ## [0.1.1] — 2026-11-01
 
