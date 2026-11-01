@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -182,6 +183,20 @@ def test_member_size_limit(tmp_path):
     options = VerifierOptions(max_single_member_bytes=2)
     result = verify_bundle_bytes(blob, options=options)
     assert result.status == "UNSAFE_ARCHIVE"
+
+
+def test_archive_file_size_limit(tmp_path: Path) -> None:
+    # The archive-file bound applies before the ZIP is read into memory;
+    # with a tiny limit even a well-formed bundle is refused.
+    options = VerifierOptions(max_archive_bytes=10)
+    result = verify_bundle(_write(tmp_path, _zip_bytes(_base())), options=options)
+    assert result.status == "UNSAFE_ARCHIVE"
+    assert result.notes and "size limit" in result.notes[0]
+
+
+def test_archive_file_size_limit_default_allows_normal_bundle(tmp_path: Path) -> None:
+    result = verify_bundle(_write(tmp_path, _zip_bytes(_base())))
+    assert result.status == "VALID_UNSIGNED"
 
 
 def test_unsupported_version(tmp_path):

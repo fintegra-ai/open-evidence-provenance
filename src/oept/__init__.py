@@ -29,4 +29,4 @@ __all__ = [
     "verify_bundle_bytes",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"

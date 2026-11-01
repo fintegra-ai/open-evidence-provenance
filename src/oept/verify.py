@@ -7,7 +7,7 @@ Verification order (each step fails closed with a terminal status):
   4. reject unsafe paths: absolute, traversal, backslash, NUL,
      Windows drive shapes (UNSAFE_ARCHIVE)
   5. reject symlink entries (UNSAFE_ARCHIVE)
-  6. enforce entry-count and size limits (UNSAFE_ARCHIVE)
+  6. enforce archive-file, entry-count and size limits (UNSAFE_ARCHIVE)
   7. require manifest.json (MALFORMED_BUNDLE)
   8. parse manifest JSON safely (MALFORMED_BUNDLE)
   9. validate the manifest against its schema (MALFORMED_BUNDLE)
@@ -53,6 +53,10 @@ KEY_INFO_MEMBER = "signatures/key-info.json"
 DEFAULT_MAX_ENTRIES = 10_000
 DEFAULT_MAX_TOTAL_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
 DEFAULT_MAX_SINGLE_MEMBER_BYTES = 64 * 1024 * 1024
+# Bounds the archive file itself before it is read into memory
+# (verify_bundle loads the whole ZIP), independently of the
+# decompressed-size limits applied after inspection.
+DEFAULT_MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,7 @@ class VerifierOptions:
     max_entries: int = DEFAULT_MAX_ENTRIES
     max_total_uncompressed_bytes: int = DEFAULT_MAX_TOTAL_UNCOMPRESSED_BYTES
     max_single_member_bytes: int = DEFAULT_MAX_SINGLE_MEMBER_BYTES
+    max_archive_bytes: int = DEFAULT_MAX_ARCHIVE_BYTES
 
 
 def _fail(
@@ -472,6 +477,18 @@ def verify_bundle(
 ) -> VerificationResult:
     """Verify a bundle ZIP file on disk. Fully offline; no network use."""
     target = Path(path)
+    opts = options or VerifierOptions()
+    try:
+        size = target.stat().st_size
+    except OSError as exc:
+        raise OeptError(f"cannot read bundle file: {exc}") from exc
+    # Reject an oversized archive before reading it into memory; the
+    # decompressed-size limits alone cannot bound this path.
+    if size > opts.max_archive_bytes:
+        return _fail(
+            "UNSAFE_ARCHIVE",
+            [f"archive file exceeds size limit ({opts.max_archive_bytes} bytes): {size} bytes"],
+        )
     try:
         data = target.read_bytes()
     except OSError as exc:
