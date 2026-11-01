@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format follows
 "Keep a Changelog"; versioning is pre-1.0 (`0.x.y`, breaking changes may
 land in minor releases until 1.0).
 
+## [Unreleased]
+
+### Added
+
+- Normative bundle-format draft `spec/OEPT-1.0-draft.md` (RFC 2119,
+  MUST→test traceability, versioning policy, non-guarantees) and
+  SECURITY.md notes: explicit non-vulnerability of the test-only conformance
+  keypair and the fuzz→vector closure rule.
+
 ## [0.1.1] — 2026-11-01
 
 ### Changed

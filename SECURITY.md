@@ -33,3 +33,14 @@ signatures). It does not detect malicious *content*, does not validate
 legal meaning, and does not establish real-world identity beyond
 caller-configured trust roots. See `spec/threat-model.md` for the full
 threat model and explicit non-goals.
+
+## Explicit non-vulnerabilities
+
+- The committed keypair in `conformance/test-only-keys/` is PUBLICLY
+  COMPROMISED BY DEFINITION (see its README) and exists solely to keep the
+  signed conformance fixture deterministic. Reports about that keypair are
+  not security findings.
+- Fuzz crashes are converted into permanent negative conformance vectors
+  (Faz C rule) before the fixing issue is closed; a fixed crash without a
+  vector is treated as an incomplete fix in review.
+
