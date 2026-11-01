@@ -1,0 +1,21 @@
+# gitleaks configuration — OEPT (open-evidence-provenance)
+#
+# Full-history scans are part of the Faz A (NLnet plan v2) boundary work.
+# Baseline scan 2026-11-01, gitleaks 8.30.1: exactly one finding, the
+# deliberately committed test-only conformance signing key below. It is
+# "PUBLICLY COMPROMISED BY DEFINITION" (see conformance/test-only-keys/
+# README.md) and exists so the signed conformance fixture verifies
+# deterministically. It must never be used for real signatures; real
+# deployments generate their own keys and pin trust roots out of band.
+#
+# Any NEW finding is a boundary violation: stop, triage, and close it
+# (rotate, purge, or justify) before merging.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Deliberate, documented test-only conformance keypair"
+paths = [
+  '''conformance/test-only-keys/''',
+]
