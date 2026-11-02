@@ -32,6 +32,7 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -40,6 +41,7 @@ from .canonical import CanonicalizationError, canonicalize_json
 from .errors import OeptError
 from .hashing import sha256_bytes
 from .models import VerificationResult
+from .schemas import validate_against_schema
 from .signing import TrustedKey, verify_manifest_signature
 
 BUNDLE_SPEC_VERSION = "oept-bundle/0.1"
@@ -93,7 +95,7 @@ def _member_is_safe(name: str) -> str | None:
         return f"NUL byte in archive member name: {name!r}"
     if name.startswith("/") or "\\" in name:
         return f"absolute or backslash archive path: {name!r}"
-    if len(name) > 2 and name[1] == ":":
+    if len(name) >= 2 and name[1] == ":":
         return f"Windows drive path in archive: {name!r}"
     parts = name.split("/")
     if any(part in ("", ".", "..") for part in parts):
@@ -114,9 +116,11 @@ def _inspect_archive(zf: zipfile.ZipFile, options: VerifierOptions) -> str | Non
         if name in seen:
             return f"duplicate archive member: {name!r}"
         seen.add(name)
-        reason = _member_is_safe(name)
+        reason = _member_is_safe(info.orig_filename)
         if reason is not None:
             return reason
+        if info.flag_bits & 1:
+            return f"encrypted archive member not allowed: {name!r}"
         mode = (info.external_attr >> 16) & 0o170000
         if mode == 0o120000:
             return f"symlink archive member not allowed: {name!r}"
@@ -158,7 +162,7 @@ def _loads_manifest(data: bytes) -> dict[str, Any]:
         parsed = json.loads(data.decode("utf-8"), object_pairs_hook=_no_duplicates)
     except UnicodeDecodeError as exc:
         raise _ManifestParseError(f"manifest is not UTF-8: {exc}") from exc
-    except json.JSONDecodeError as exc:
+    except (ValueError, RecursionError) as exc:
         raise _ManifestParseError(f"manifest is not JSON: {exc}") from exc
     if not isinstance(parsed, dict):
         raise _ManifestParseError("manifest JSON value must be an object")
@@ -166,9 +170,17 @@ def _loads_manifest(data: bytes) -> dict[str, Any]:
 
 
 def _manifest_schema_errors(manifest: object) -> list[str]:
-    errors: list[str] = []
     if not isinstance(manifest, dict):
         return ["manifest.json must be a JSON object"]
+    # Validate types and strict file entries before consuming untrusted fields.
+    # Version dispatch stays separate so future string versions retain their
+    # dedicated UNSUPPORTED_SPEC_VERSION result.
+    schema_input = dict(manifest)
+    if isinstance(schema_input.get("bundle_spec_version"), str):
+        schema_input["bundle_spec_version"] = BUNDLE_SPEC_VERSION
+    errors = validate_against_schema("bundle-manifest", schema_input)
+    if errors:
+        return errors
     for field in ("bundle_spec_version", "bundle_id", "created_at", "files"):
         if field not in manifest:
             errors.append(f"manifest.json is missing required field: {field}")
@@ -223,7 +235,9 @@ def _verify_members(
     # (bound to the signed payload) but its key_id is never trusted.
     envelope = {SIGNATURE_MEMBER}
     actual = set(names) - {"manifest.json"}
-    missing = sorted(set(declared) - actual)
+    missing = sorted((set(declared) | {"facts.json", "provenance.json"}) - actual)
+    if not any(name.startswith("evidence/") for name in actual):
+        missing.append("evidence/")
     unexpected = sorted(actual - set(declared) - envelope)
     result = VerificationResult(
         status="VALID",
@@ -431,7 +445,25 @@ def verify_bundle_bytes(
 ) -> VerificationResult:
     """Verify a bundle from in-memory ZIP bytes (no disk I/O at all)."""
     opts = options or VerifierOptions()
-    keys = trusted_keys or []
+    if len(data) > opts.max_archive_bytes:
+        return _fail("UNSAFE_ARCHIVE", ["archive bytes exceed size limit"])
+    try:
+        return _verify_zip_bytes(data, trusted_keys or [], opts)
+    except (
+        zipfile.BadZipFile,
+        RuntimeError,
+        NotImplementedError,
+        zlib.error,
+        EOFError,
+        UnicodeError,
+        RecursionError,
+    ) as exc:
+        return _fail("MALFORMED_BUNDLE", [f"unreadable archive content: {exc}"])
+
+
+def _verify_zip_bytes(
+    data: bytes, keys: list[TrustedKey], opts: VerifierOptions
+) -> VerificationResult:
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:

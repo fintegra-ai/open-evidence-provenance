@@ -79,7 +79,7 @@ def test_cli_bundle_roundtrip(tmp_path):
 def test_cli_conformance(tmp_path):
     proc = _run_cli("conformance")
     assert proc.returncode == 0, proc.stderr
-    assert "10/10 conformance cases pass" in proc.stdout
+    assert "15/15 conformance cases pass" in proc.stdout
 
 
 def test_cli_schema_list():
@@ -93,9 +93,9 @@ def test_conformance_runner_api():
     from oept.conformance import run_conformance
 
     report = run_conformance()
-    assert report["total"] == 10
+    assert report["total"] == 15
     assert report["failed"] == 0
-    assert report["passed"] == 10
+    assert report["passed"] == 15
 
 
 def test_schemas_validate_and_reject():

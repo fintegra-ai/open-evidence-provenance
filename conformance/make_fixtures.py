@@ -98,13 +98,16 @@ def _zip_with_extra_members(base: bytes, extra: list[tuple[str, bytes]]) -> byte
     """Return a copy of a ZIP with additional raw members appended.
 
     Used for hostile-structure fixtures (unsafe paths, duplicates,
-    unexpected members). Members use default timestamps; only the base
-    payload needs determinism.
+    unexpected members). Extra entries use fixed metadata too.
     """
     buffer = io.BytesIO(base)
     with zipfile.ZipFile(buffer, "a", zipfile.ZIP_DEFLATED) as archive:
         for name, data in extra:
-            archive.writestr(name, data)
+            info = zipfile.ZipInfo(name, date_time=FIXED_ZIP_DATE_TIME)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = FIXED_EXTERNAL_ATTR
+            info.create_system = 3
+            archive.writestr(info, data)
     return buffer.getvalue()
 
 
@@ -207,6 +210,43 @@ def main() -> int:
     malformed = _zip_with_replaced_member(unsigned, "manifest.json", b"{not valid json,,,")
     _write_fixture("10-malformed-manifest", malformed, "MALFORMED_BUNDLE")
 
+    # Permanent negative regression vectors from the 2026-11-02 review.
+    invalid_type = _base_builder().manifest_dict()
+    invalid_type["bundle_spec_version"] = []
+    _write_fixture(
+        "11-invalid-manifest-type",
+        _zip_with_replaced_member(unsigned, "manifest.json", canonicalize_json(invalid_type)),
+        "MALFORMED_BUNDLE",
+    )
+    missing_required = _base_builder().manifest_dict()
+    missing_required["files"] = []
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+        archive.writestr(
+            zipfile.ZipInfo("manifest.json", FIXED_ZIP_DATE_TIME),
+            canonicalize_json(missing_required),
+        )
+    _write_fixture("12-missing-required-members", buffer.getvalue(), "MISSING_FILE")
+    import struct
+
+    encrypted = bytearray(unsigned)
+    offset = encrypted.index(b"PK\x01\x02")
+    flags = struct.unpack_from("<H", encrypted, offset + 8)[0]
+    struct.pack_into("<H", encrypted, offset + 8, flags | 1)
+    _write_fixture("13-encrypted-member", bytes(encrypted), "UNSAFE_ARCHIVE")
+    corrupt = bytearray(unsigned)
+    offset = corrupt.index(b"PK\x01\x02")
+    corrupt[offset + 16] ^= 1  # central-directory CRC differs from payload
+    _write_fixture("14-corrupt-member-crc", bytes(corrupt), "MALFORMED_BUNDLE")
+    no_evidence = _base_builder().manifest_dict()
+    no_evidence["files"] = [
+        e for e in no_evidence["files"] if not e["path"].startswith("evidence/")
+    ]
+    blob = _zip_with_replaced_member(unsigned, "manifest.json", canonicalize_json(no_evidence))
+    for name in EVIDENCE:
+        blob = _zip_without_member(blob, name)
+    _write_fixture("15-missing-evidence", blob, "MISSING_FILE")
+
     # Worked example for the README quickstart.
     examples = ROOT / "examples"
     (examples / "evidence-project" / "evidence").mkdir(parents=True, exist_ok=True)
@@ -240,7 +280,7 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    print("conformance fixtures written (10) + examples/valid-unsigned.zip")
+    print("conformance fixtures written (15) + examples/valid-unsigned.zip")
     return 0
 
 

@@ -6,6 +6,15 @@ land in minor releases until 1.0).
 
 ## [Unreleased]
 
+### Fixed
+
+- Validate manifest field types and strict file entries before consuming them;
+  reject bundles lacking facts, provenance, or evidence even when undeclared.
+- Fail closed on encrypted members, corrupt CRC/compression, malformed JSON,
+  and byte-API archive size violations. Builder rejects Windows drive paths.
+- Five permanent negative conformance vectors extend the OEPT corpus to 15.
+
+
 ### Added
 
 - Normative bundle-format draft `spec/OEPT-1.0-draft.md` (RFC 2119,

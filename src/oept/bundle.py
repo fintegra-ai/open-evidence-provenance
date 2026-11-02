@@ -53,6 +53,8 @@ class BundleFile:
 def _check_member_path(path: str) -> None:
     if not path or path.startswith("/") or "\\" in path or "\x00" in path:
         raise ValidationError(f"unsafe bundle member path: {path!r}")
+    if len(path) >= 2 and path[1] == ":":
+        raise ValidationError(f"unsafe bundle member path: {path!r}")
     parts = path.split("/")
     if any(part in ("", ".", "..") for part in parts):
         raise ValidationError(f"unsafe bundle member path: {path!r}")
