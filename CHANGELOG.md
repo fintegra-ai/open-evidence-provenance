@@ -8,6 +8,17 @@ land in minor releases until 1.0).
 
 ### Fixed
 
+- The builder requires evidence members, matching the existing verifier/spec.
+- Directory verification rejects symlink roots; directory bundling checks
+  symlinks before treating them as directories.
+- CLI digest reporting says NOT EVALUATED when structural checks terminate
+  verification, rather than presenting unexecuted digest checks as VALID.
+
+## [0.1.2] — 2026-11-02
+
+
+### Fixed
+
 - Validate manifest field types and strict file entries before consuming them;
   reject bundles lacking facts, provenance, or evidence even when undeclared.
 - Fail closed on encrypted members, corrupt CRC/compression, malformed JSON,

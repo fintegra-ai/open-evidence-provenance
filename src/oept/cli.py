@@ -39,11 +39,22 @@ def _render_human(bundle_label: str, result: VerificationResult) -> str:
         signature = "INVALID"
     else:
         signature = "NOT EVALUATED"
+    if result.status in {"HASH_MISMATCH", "MISSING_FILE", "UNEXPECTED_FILE"}:
+        digest_state = "INVALID"
+    elif result.status in {
+        "VALID_SIGNED",
+        "VALID_UNSIGNED",
+        "SIGNATURE_INVALID",
+        "SIGNATURE_KEY_UNKNOWN",
+    }:
+        digest_state = "VALID"
+    else:
+        digest_state = "NOT EVALUATED"
     lines = [
         f"Bundle: {bundle_label}",
         f"Specification: {result.bundle_spec_version or '-'}",
         f"Structure: {'VALID' if result.status not in ('MALFORMED_BUNDLE', 'UNSAFE_ARCHIVE', 'UNSUPPORTED_SPEC_VERSION') else 'INVALID'}",
-        f"Member digests: {'VALID' if not result.mismatches and not result.missing else 'INVALID'}",
+        f"Member digests: {digest_state}",
         f"Signature: {signature}",
         f"Result: {result.status}",
     ]
@@ -85,10 +96,10 @@ def cmd_verify(args: argparse.Namespace) -> int:
 def _iter_input_files(root: Path) -> dict[str, bytes]:
     members: dict[str, bytes] = {}
     for path in sorted(root.rglob("*")):
-        if path.is_dir():
-            continue
         if path.is_symlink():
             raise ValidationError(f"input contains symlink (refusing to bundle): {path}")
+        if path.is_dir():
+            continue
         try:
             name = path.relative_to(root).as_posix()
         except ValueError as exc:

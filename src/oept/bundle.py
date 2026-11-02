@@ -101,6 +101,8 @@ class BundleBuilder:
         for required in ("facts.json", "provenance.json"):
             if required not in self._files:
                 raise ValidationError(f"bundle is missing required member: {required}")
+        if not any(path.startswith(EVIDENCE_PREFIX) for path in self._files):
+            raise ValidationError("bundle is missing required evidence/ member")
         entries = [
             {"path": path, "sha256": sha256_bytes(data), "size_bytes": len(data)}
             for path, data in sorted(self._files.items())

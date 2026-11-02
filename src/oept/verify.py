@@ -537,6 +537,8 @@ def verify_bundle_dir(
     opts = options or VerifierOptions()
     keys = trusted_keys or []
     root = Path(path)
+    if root.is_symlink():
+        return _fail("UNSAFE_ARCHIVE", ["bundle root must not be a symlink"])
     if not root.is_dir():
         raise OeptError(f"not a directory: {path}")
     entries = [p for p in root.rglob("*") if p.is_file() or p.is_symlink()]
