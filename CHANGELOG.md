@@ -6,6 +6,8 @@ land in minor releases until 1.0).
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-11-02
+
 ### Fixed
 
 - The builder requires evidence members, matching the existing verifier/spec.
