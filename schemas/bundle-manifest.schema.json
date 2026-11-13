@@ -4,24 +4,72 @@
   "title": "OEPT bundle manifest",
   "description": "Manifest for oept-bundle/0.1 portable evidence bundles. Unknown top-level fields are ignored by verifiers (forward compatibility); file entries are strict. Pre-1.0 provisional namespace.",
   "type": "object",
-  "required": ["bundle_spec_version", "bundle_id", "created_at", "files"],
+  "required": [
+    "bundle_spec_version",
+    "bundle_id",
+    "created_at",
+    "files"
+  ],
   "properties": {
-    "bundle_spec_version": { "type": "string", "const": "oept-bundle/0.1" },
-    "bundle_id": { "type": "string", "minLength": 1 },
-    "created_at": { "type": "string", "minLength": 1 },
-    "key_id": { "type": "string" },
+    "bundle_spec_version": {
+      "type": "string",
+      "const": "oept-bundle/0.1"
+    },
+    "bundle_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "key_id": {
+      "type": "string"
+    },
     "files": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["path", "sha256", "size_bytes"],
+        "required": [
+          "path",
+          "sha256",
+          "size_bytes"
+        ],
         "properties": {
-          "path": { "type": "string", "minLength": 1 },
-          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-          "size_bytes": { "type": "integer", "minimum": 0 }
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          }
         },
         "additionalProperties": false
       }
+    },
+    "execution_binding": {
+      "type": "object",
+      "description": "Optional pointer to an OEVP Historical Execution Attestation (HEA) run that attested this bundle's content as built WITHOUT this field (a bundle cannot bind its own execution: the execution ID derives from the bundle digest). OEPT checks format only; content is verified by OEVP.",
+      "required": [
+        "execution_id",
+        "commitment_digest"
+      ],
+      "properties": {
+        "execution_id": {
+          "type": "string",
+          "pattern": "^exec_[0-9a-f]{32}$"
+        },
+        "commitment_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

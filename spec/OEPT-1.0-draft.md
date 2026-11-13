@@ -37,6 +37,18 @@ profiles, or re-verification (see OEVP-1.0).
    `test_unsafe_absolute_path`, `test_windows_traversal`,
    `test_symlink_entry`, `test_hostile_member_names`,
    `test_bare_directory_entry_rejected`]
+7. `manifest.json` MAY carry an optional `execution_binding` object with
+   exactly the keys `execution_id` (`exec_` + 32 lowercase hex chars) and
+   `commitment_digest` (`sha256:` + 64 lowercase hex chars). A verifier
+   MUST reject a present-but-malformed `execution_binding` with
+   `MALFORMED_BUNDLE` and MUST ignore its absence. OEPT checks format
+   only; whether the named execution really attested this bundle is
+   verified on the OEVP side (Historical Execution Attestation). A bundle
+   CANNOT bind its own execution: the execution ID is derived from the
+   bundle digest, and adding the binding changes the manifest and
+   therefore the digest. The binding therefore always points at the
+   execution of the bundle as built WITHOUT the binding. [tests:
+   `tests/test_execution_binding.py`]
 
 ## 3. Canonicalization
 

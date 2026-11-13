@@ -6,6 +6,40 @@ land in minor releases until 1.0).
 
 ## [Unreleased]
 
+### Planned for 0.1.4 — DRAFT (not released; version fields still 0.1.3)
+
+> Draft entry prepared 2026-11-13 (worker E, round 3 P4; Tur-4 note added
+> 2026-11-13, round 4 P5). The version bump itself is a separate,
+> Enes-gated step — see `docs/BRANCH_AND_COMMIT_PLAN_V4.md` (commit
+> OEPT-6). Do not publish from this entry alone.
+>
+> Tur-4 note: no OEPT product-code change this round (suite still
+> 147 passed; working-tree paths still 12). Cross-version interop with
+> released PyPI 0.1.3 was measured in round 4 P5: PyPI 0.1.3 verifies
+> bundles built by this tree (`VALID_SIGNED`) and vice versa; the
+> version stays a **patch** bump (0.1.4: additive + fixes only).
+
+#### Added
+
+- Optional `execution_binding` manifest field (`execution_id` +
+  `commitment_digest`, format-checked only; `BundleBuilder.set_execution_binding()`).
+  A bundle cannot bind its own execution (SHA-256 fixed point); the field is
+  a pointer to the execution of the unbound bundle — see
+  `spec/OEPT-1.0-draft.md` §2 rule 7.
+
+#### Fixed
+
+- Unsigned-K4 int-range gap: the `|n| ≤ 2**53−1` check now also runs on the
+  unsigned path (`src/oept/verify.py`); an unsigned bundle with
+  `size_bytes=2**53` is now `MALFORMED_BUNDLE`. K4 probe 11/11.
+- JCS convergence: finite floats are now accepted per RFC 8785 §3.2.2.3
+  (non-finite rejected; OEPT canonical was the outlier), lone surrogates
+  are rejected on all sides per §3.2.2.2, and the trust-keys loader
+  rejects duplicate JSON members. Three-way differential 403/403 with the
+  independent Node.js verifier, zero open divergences.
+- `MANIFEST.in`: `CHANGELOG.md`, `SECURITY.md` and `AI_PROVENANCE.md` now
+  enter the sdist (177 files, verified byte-identical).
+
 ## [0.1.3] — 2026-11-02
 
 ### Fixed

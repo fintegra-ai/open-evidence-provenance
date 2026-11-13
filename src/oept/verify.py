@@ -11,6 +11,8 @@ Verification order (each step fails closed with a terminal status):
   7. require manifest.json (MALFORMED_BUNDLE)
   8. parse manifest JSON safely (MALFORMED_BUNDLE)
   9. validate the manifest against its schema (MALFORMED_BUNDLE)
+  9a. when present, check the HEA execution_binding format (MALFORMED_BUNDLE);
+      OEPT checks format only, content is verified by OEVP
   10. require a supported spec version (UNSUPPORTED_SPEC_VERSION)
   11. compare declared vs actual member set, honoring the signature
       envelope (MISSING_FILE / UNEXPECTED_FILE)
@@ -31,6 +33,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import zipfile
 import zlib
 from dataclasses import dataclass
@@ -167,6 +170,36 @@ def _loads_manifest(data: bytes) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise _ManifestParseError("manifest JSON value must be an object")
     return parsed
+
+
+def _execution_binding_format_error(manifest: dict[str, Any]) -> str | None:
+    """Return an error string when a present ``execution_binding`` is malformed.
+
+    OEPT checks format only (HEA design §3.3): the execution_id must be
+    ``exec_`` + 32 lowercase hex chars and the commitment_digest
+    ``sha256:`` + 64 lowercase hex chars, with no extra keys. Whether the
+    execution really attested this bundle is verified on the OEVP side.
+    Absence of the field is fine (backward compatible).
+    """
+    if "execution_binding" not in manifest:
+        return None
+    binding = manifest["execution_binding"]
+    if not isinstance(binding, dict):
+        return "manifest execution_binding must be an object"
+    if set(binding) != {"execution_id", "commitment_digest"}:
+        return (
+            "manifest execution_binding must have exactly the keys "
+            "'execution_id' and 'commitment_digest'"
+        )
+    execution_id = binding["execution_id"]
+    if not isinstance(execution_id, str) or not re.fullmatch(r"exec_[0-9a-f]{32}", execution_id):
+        return f"manifest execution_binding has invalid execution_id: {execution_id!r}"
+    commitment_digest = binding["commitment_digest"]
+    if not isinstance(commitment_digest, str) or not re.fullmatch(
+        r"sha256:[0-9a-f]{64}", commitment_digest
+    ):
+        return f"manifest execution_binding has invalid commitment_digest: {commitment_digest!r}"
+    return None
 
 
 def _manifest_schema_errors(manifest: object) -> list[str]:
@@ -488,6 +521,9 @@ def _verify_zip_bytes(
         schema_errors = _manifest_schema_errors(manifest)
         if schema_errors:
             return _fail("MALFORMED_BUNDLE", schema_errors)
+        binding_error = _execution_binding_format_error(manifest)
+        if binding_error is not None:
+            return _fail("MALFORMED_BUNDLE", [binding_error])
         spec = manifest.get("bundle_spec_version")
         if spec not in SUPPORTED_SPEC_VERSIONS:
             return _fail(
@@ -574,6 +610,9 @@ def verify_bundle_dir(
     schema_errors = _manifest_schema_errors(manifest)
     if schema_errors:
         return _fail("MALFORMED_BUNDLE", schema_errors)
+    binding_error = _execution_binding_format_error(manifest)
+    if binding_error is not None:
+        return _fail("MALFORMED_BUNDLE", [binding_error])
     spec = manifest.get("bundle_spec_version")
     if spec not in SUPPORTED_SPEC_VERSIONS:
         return _fail(

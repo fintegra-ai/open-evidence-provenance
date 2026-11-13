@@ -9,11 +9,23 @@ Reproducibility boundary (stated honestly): identical logical inputs
 produce identical manifest bytes on any platform. Complete-ZIP-byte
 identity additionally depends on the Python/zlib ZIP implementation and
 is asserted only for same-interpreter round-trips in the test suite.
+
+Historical Execution Attestation (HEA) binding: a bundle MAY carry an
+optional ``execution_binding`` field (Execution ID + commitment digest)
+pointing at an OEVP Historical Execution Attestation run. The field is a
+pointer, not proof: OEPT only checks its format; content verification
+happens on the OEVP side. A bundle CANNOT bind its own execution — the
+execution ID is derived from the bundle digest, and adding the binding
+changes the manifest and therefore the digest (a SHA-256 fixed point no
+producer can construct). The binding therefore always points at the
+execution of the bundle as built WITHOUT the binding; a verifier that
+wants to match it must recompute the digest of the unbound bundle.
 """
 
 from __future__ import annotations
 
 import io
+import re
 import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -36,6 +48,26 @@ FIXED_EXTERNAL_ATTR = 0o644 << 16
 REQUIRED_MEMBERS = ("manifest.json", "facts.json", "provenance.json")
 
 EVIDENCE_PREFIX = "evidence/"
+
+#: Execution ID format (OEVP HEA, ``exec_`` + 32 lowercase hex chars).
+EXECUTION_ID_RE = re.compile(r"^exec_[0-9a-f]{32}$")
+
+#: Commitment digest format (``sha256:`` + 64 lowercase hex chars).
+COMMITMENT_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def validate_execution_binding(execution_id: str, commitment_digest: str) -> dict[str, str]:
+    """Validate a HEA execution binding; return it as a manifest field value.
+
+    Raises ValidationError on any format deviation. OEPT checks format
+    only — the content (whether this execution really attested this
+    bundle) is verified on the OEVP side.
+    """
+    if not isinstance(execution_id, str) or not EXECUTION_ID_RE.match(execution_id):
+        raise ValidationError(f"invalid HEA execution_id: {execution_id!r}")
+    if not isinstance(commitment_digest, str) or not COMMITMENT_DIGEST_RE.match(commitment_digest):
+        raise ValidationError(f"invalid HEA commitment_digest: {commitment_digest!r}")
+    return {"execution_id": execution_id, "commitment_digest": commitment_digest}
 
 
 @dataclass
@@ -70,12 +102,28 @@ class BundleBuilder:
     created_at: str = ""
     _files: dict[str, bytes] = field(default_factory=dict)
     key_id: str | None = None
+    execution_binding: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
         if not self.bundle_id or not self.bundle_id.strip():
             raise ValidationError("bundle_id must be non-empty")
         if not self.created_at:
             self.created_at = utc_now_iso()
+        if self.execution_binding is not None:
+            self.execution_binding = validate_execution_binding(
+                self.execution_binding.get("execution_id", ""),
+                self.execution_binding.get("commitment_digest", ""),
+            )
+
+    def set_execution_binding(self, execution_id: str, commitment_digest: str) -> BundleBuilder:
+        """Record the HEA execution this bundle's content was attested under.
+
+        The binding points at the execution of the bundle as built WITHOUT
+        the binding (see module docstring: a bundle cannot bind its own
+        execution). Format is validated here; content is verified by OEVP.
+        """
+        self.execution_binding = validate_execution_binding(execution_id, commitment_digest)
+        return self
 
     def add_file(self, path: str, data: bytes) -> BundleBuilder:
         """Add one member. Duplicate paths are rejected (never overwritten)."""
@@ -115,6 +163,8 @@ class BundleBuilder:
         }
         if self.key_id:
             manifest["key_id"] = self.key_id
+        if self.execution_binding is not None:
+            manifest["execution_binding"] = dict(self.execution_binding)
         return manifest
 
     def manifest_bytes(self) -> bytes:
