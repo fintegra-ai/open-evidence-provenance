@@ -6,13 +6,8 @@ land in minor releases until 1.0).
 
 ## [Unreleased]
 
-### Planned for 0.1.4 — DRAFT (not released; version fields still 0.1.3)
+## [0.1.4] — 2026-11-13
 
-> Draft entry prepared 2026-11-13 (worker E, round 3 P4; Tur-4 note added
-> 2026-11-13, round 4 P5). The version bump itself is a separate,
-> Enes-gated step — see `docs/BRANCH_AND_COMMIT_PLAN_V4.md` (commit
-> OEPT-6). Do not publish from this entry alone.
->
 > Tur-4 note: no OEPT product-code change this round (suite still
 > 147 passed; working-tree paths still 12). Cross-version interop with
 > released PyPI 0.1.3 was measured in round 4 P5: PyPI 0.1.3 verifies
