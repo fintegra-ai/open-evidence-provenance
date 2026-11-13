@@ -29,7 +29,7 @@ COMMITMENT_DIGEST = "sha256:" + "b" * 64
 
 
 def _builder() -> BundleBuilder:
-    builder = BundleBuilder(bundle_id="hea-binding-test")
+    builder = BundleBuilder(bundle_id="hea-binding-test", created_at="2026-01-01T00:00:00Z")
     builder.add_file("facts.json", b'{"fact": 1}')
     builder.add_file("provenance.json", b'{"source": "test"}')
     builder.add_evidence("a.bin", b"evidence")
