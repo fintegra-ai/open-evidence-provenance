@@ -1,3 +1,6 @@
+include CHANGELOG.md
+include SECURITY.md
+include AI_PROVENANCE.md
 graft schemas
 graft spec
 graft examples
