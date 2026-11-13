@@ -13,6 +13,7 @@ and NOT certificate chains.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -99,14 +100,35 @@ def verify_manifest_signature(
 
 
 def load_trust_keys(path: object) -> list[TrustedKey]:
-    """Load a trust-keys file: JSON list of {key_id, public_key_pem}."""
+    """Load a trust-keys file: JSON list of {key_id, public_key_pem}.
+
+    Duplicate JSON object members are rejected (round 3, P0): the stdlib
+    parser silently keeps the last duplicate, so a hostile trust-keys
+    file could smuggle two different ``public_key_pem`` values for one
+    ``key_id`` past a naive reader. Duplicates fail closed, matching
+    the manifest parser (``verify._loads_manifest``) and OEVP
+    (``oev.canonical.safe_json_loads``).
+    """
     import json
     from pathlib import Path
 
     from .errors import ConfigurationError
 
+    def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ConfigurationError(f"duplicate JSON member in trust-keys file: {key!r}")
+            result[key] = value
+        return result
+
     try:
-        raw = json.loads(Path(str(path)).read_bytes().decode("utf-8"))
+        raw = json.loads(
+            Path(str(path)).read_bytes().decode("utf-8"),
+            object_pairs_hook=_no_duplicates,
+        )
+    except ConfigurationError:
+        raise
     except Exception as exc:
         raise ConfigurationError(f"cannot read trust-keys file: {exc}") from exc
     if not isinstance(raw, list) or not raw:
