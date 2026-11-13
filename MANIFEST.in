@@ -6,6 +6,10 @@ graft spec
 graft examples
 graft conformance
 graft docs
+# The test-only private signing key must never ship in a distribution:
+# only conformance/make_fixtures.py reads it (to regenerate fixtures);
+# no test and no src/oept module needs it. The public half + README stay.
+exclude conformance/test-only-keys/conformance-test-only-signing.key
 global-exclude __pycache__
 global-exclude *.py[cod]
 global-exclude .DS_Store
