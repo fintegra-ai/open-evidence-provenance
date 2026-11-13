@@ -409,6 +409,81 @@ def test_signed_boundary_integer_stays_valid(tmp_path):
     assert result.status == "VALID_SIGNED"
 
 
+def test_signed_negative_out_of_range_integer_is_malformed(tmp_path):
+    # Round 3 (P0): the signed path must reject -(2**53) as well — the
+    # canonical-domain check is sign-agnostic, not a size_bytes-only rule.
+    private_pem, _public_pem, keys = _keypair()
+    builder = _base(key_id="k1")
+    signature = sign_manifest(b"dummy", private_pem)
+    blob = _manifest_with_raw(_zip_bytes(builder, signature), lambda m: _set_size(m, -(2**53)))
+    result = verify_bundle(_write(tmp_path, blob), keys)
+    assert result.status == "MALFORMED_BUNDLE"
+
+
+def test_unsigned_float_in_unknown_field_is_valid(tmp_path):
+    # Round 3 (P0) float decision: a finite float in an unknown,
+    # schema-ignored field canonicalizes per RFC 8785 §3.2.2.3 and the
+    # bundle stays VALID_UNSIGNED — this was the known Python/Node
+    # divergence (reference MALFORMED_BUNDLE, Node VALID_UNSIGNED).
+    blob = _manifest_with_raw(
+        _zip_bytes(_base()),
+        lambda manifest: manifest.update({"future_field": {"x": 1.5}}),
+    )
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "VALID_UNSIGNED"
+
+
+def test_signed_float_in_unknown_field_is_valid(tmp_path):
+    # Same float rule on the signed path: the signature covers the
+    # canonical manifest bytes, which now include the float field.
+    from oept.canonical import canonicalize_json
+
+    private_pem, _public_pem, keys = _keypair()
+    builder = _base(key_id="k1")
+    manifest = builder.manifest_dict()
+    manifest["future_field"] = {"x": 1.5}
+    manifest_bytes = canonicalize_json(manifest)
+    signature = sign_manifest(manifest_bytes, private_pem)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in ("facts.json", "provenance.json", "evidence/a.txt"):
+            archive.writestr(
+                path,
+                {"facts.json": b"[]", "provenance.json": b"[]", "evidence/a.txt": b"hello"}[path],
+            )
+        archive.writestr("manifest.json", manifest_bytes)
+        archive.writestr("signatures/manifest.sig", signature)
+    result = verify_bundle(_write(tmp_path, buffer.getvalue()), keys)
+    assert result.status == "VALID_SIGNED"
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [(-(2**53 - 1), "VALID_UNSIGNED"), (-(2**53), "MALFORMED_BUNDLE")],
+)
+def test_unsigned_negative_boundary_in_unknown_field(tmp_path, value, expected):
+    # Negative boundary expressed in a schema-ignored field, so the
+    # verdict comes from the canonical-domain check alone (size_bytes
+    # itself has a schema minimum of 0 and would fail earlier).
+    blob = _manifest_with_raw(
+        _zip_bytes(_base()),
+        lambda manifest: manifest.update({"future_field": {"n": value}}),
+    )
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == expected
+
+
+def test_verify_unpacked_directory_out_of_range_integer(tmp_path):
+    from oept.verify import verify_bundle_dir
+
+    blob = _manifest_with_raw(_zip_bytes(_base()), lambda m: _set_size(m, 2**53))
+    target = tmp_path / "unpacked"
+    with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+        archive.extractall(target)
+    result = verify_bundle_dir(target)
+    assert result.status == "MALFORMED_BUNDLE"
+
+
 def test_trailing_data_after_central_directory(tmp_path):
     blob = _zip_bytes(_base()) + b"\x00" * 64
     result = verify_bundle(_write(tmp_path, blob))

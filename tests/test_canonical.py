@@ -26,13 +26,51 @@ def test_canonical_bytes_shape():
     assert canonicalize_json([1, True, None, "s"]) == b'[1,true,null,"s"]'
 
 
-def test_float_rejected():
+def test_finite_floats_accepted_per_rfc8785():
+    # Round 3 (P0) design decision: finite floats serialize per ECMAScript
+    # Number::toString (RFC 8785 §3.2.2.3), matching OEVP and the Node
+    # verifier. Non-finite floats are still rejected.
+    assert canonicalize_json({"a": 1.5}) == b'{"a":1.5}'
+    assert canonicalize_json({"a": -0.5}) == b'{"a":-0.5}'
+    assert canonicalize_json({"a": 1e21}) == b'{"a":1e+21}'
+    assert canonicalize_json({"a": 1e20}) == b'{"a":100000000000000000000}'
+    assert canonicalize_json({"a": 1e-7}) == b'{"a":1e-7}'
+    assert canonicalize_json({"a": 0.1}) == b'{"a":0.1}'
+    assert canonicalize_json({"a": 5e-324}) == b'{"a":5e-324}'
+    assert canonicalize_json({"a": 1.7976931348623157e308}) == (b'{"a":1.7976931348623157e+308}')
+    assert canonicalize_json({"a": -0.0}) == b'{"a":0}'
+    assert canonicalize_json({"a": 1.0}) == b'{"a":1}'  # integer-valued float
+
+
+def test_non_finite_floats_rejected():
     with pytest.raises(CanonicalizationError):
         canonicalize_json({"a": float("nan")})
     with pytest.raises(CanonicalizationError):
-        canonicalize_json({"a": 1.5})
-    with pytest.raises(CanonicalizationError):
         canonicalize_json([float("inf")])
+    with pytest.raises(CanonicalizationError):
+        canonicalize_json({"a": float("-inf")})
+
+
+def test_lone_surrogates_rejected():
+    # RFC 8785 §3.2.2.2: unpaired surrogates MUST terminate with an error.
+    for bad in (
+        {"a": "\ud800"},
+        {"a": "\udc00"},
+        {"a": "x\ud800y"},
+        {"\ud800key": 1},
+        {"key\udc00": 1},
+        ["\ud83d"],  # high surrogate with no low surrogate
+    ):
+        with pytest.raises(CanonicalizationError):
+            canonicalize_json(bad)
+    # A well-formed supplementary character (one code point) canonicalizes.
+    # Note: the Python literal "\ud83d\ude00" is two surrogate code points,
+    # not one character — only json.loads() combines a \u escape pair into
+    # the real code point, so the literal form is correctly rejected above.
+    assert canonicalize_json({"a": "😀"}) == '{"a":"😀"}'.encode()
+    import json as _json
+
+    assert canonicalize_json(_json.loads(r'{"a":"\ud83d\ude00"}')) == ('{"a":"😀"}'.encode())
 
 
 def test_non_string_key_rejected():
