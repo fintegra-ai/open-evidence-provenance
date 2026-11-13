@@ -19,8 +19,10 @@ Verification order (each step fails closed with a terminal status):
   12. recompute SHA-256 for every declared member (HASH_MISMATCH)
   13. verify the Ed25519 signature when present (SIGNATURE_INVALID /
       SIGNATURE_KEY_UNKNOWN / VALID_SIGNED)
-  14. otherwise VALID_UNSIGNED, or SIGNATURE_NOT_PRESENT detail preserved
-      by callers that need the unsigned-vs-never-signed distinction
+  14. otherwise check the manifest is in the canonical (JCS) domain
+      (|n| <= 2**53 - 1 for every integer; MALFORMED_BUNDLE) and return
+      VALID_UNSIGNED, or SIGNATURE_NOT_PRESENT detail preserved by
+      callers that need the unsigned-vs-never-signed distinction
 
 Members are verified directly from ZIP streams; nothing is extracted to
 arbitrary filesystem paths.
@@ -135,10 +137,35 @@ def _inspect_archive(zf: zipfile.ZipFile, options: VerifierOptions) -> str | Non
     return None
 
 
+class _MemberReadError(OeptError):
+    """A declared archive member cannot be read (corrupt offsets, bad CRC, ...).
+
+    Fail-closed as MALFORMED_BUNDLE: an unreadable member is never treated
+    as "absent" or "matching". Raised by _read_member / _safe_read only.
+    """
+
+
 def _read_member(zf: zipfile.ZipFile, name: str) -> bytes:
     # Direct stream read; never extracted to disk.
-    with zf.open(name, "r") as handle:
-        return handle.read()
+    # Corrupt central-directory offsets make ZipFile.open raise ValueError
+    # ("negative seek value") — previously uncaught, crashing the verifier
+    # (Tur 3 fuzz finding: bench-crash-centraldir-0/1). Convert to a
+    # controlled error instead.
+    try:
+        with zf.open(name, "r") as handle:
+            return handle.read()
+    except (ValueError, OSError, RuntimeError, zlib.error, EOFError, zipfile.BadZipFile) as exc:
+        raise _MemberReadError(f"member {name!r} unreadable: {exc}") from exc
+
+
+def _safe_read(reader: MemberReader, name: str) -> bytes:
+    """Read a member via the MemberReader protocol, fail-closed on corruption."""
+    try:
+        return reader.read(name)
+    except KeyError:
+        raise
+    except (ValueError, OSError, RuntimeError, zlib.error, EOFError, zipfile.BadZipFile) as exc:
+        raise _MemberReadError(f"member {name!r} unreadable: {exc}") from exc
 
 
 class _ManifestParseError(OeptError):
@@ -301,10 +328,20 @@ def _verify_members(
     mismatches: list[dict[str, Any]] = []
     for path in sorted(declared):
         try:
-            data = reader.read(path)
+            data = _safe_read(reader, path)
         except KeyError:
             mismatches.append({"path": path, "expected": declared[path], "actual": None})
             continue
+        except _MemberReadError as exc:
+            # Corrupt member (e.g. bad central-directory offsets): fail
+            # closed as malformed, never as a digest mismatch or a crash.
+            return VerificationResult(
+                status="MALFORMED_BUNDLE",
+                bundle_spec_version=result.bundle_spec_version,
+                bundle_id=result.bundle_id,
+                signing_state=result.signing_state,
+                notes=[f"declared member unreadable: {exc}"],
+            )
         actual_digest = sha256_bytes(data)
         if actual_digest != declared[path]:
             mismatches.append({"path": path, "expected": declared[path], "actual": actual_digest})
@@ -328,6 +365,24 @@ def _verify_signature(
     trusted_keys: list[TrustedKey],
 ) -> VerificationResult:
     if SIGNATURE_MEMBER not in names:
+        # The manifest must be in the canonical (JCS) domain on every
+        # path, not only when a signature is present. The int-range
+        # check (|n| <= 2**53 - 1) lives in canonicalize_json, and the
+        # signed path below reaches it while verifying the signature;
+        # the unsigned path used to skip canonicalization entirely, so
+        # a manifest with e.g. size_bytes=2**53 passed as
+        # VALID_UNSIGNED. Apply the same check here, with the same
+        # status and message as the signed path.
+        try:
+            canonicalize_json(manifest)
+        except CanonicalizationError as exc:
+            return VerificationResult(
+                status="MALFORMED_BUNDLE",
+                bundle_spec_version=result.bundle_spec_version,
+                bundle_id=result.bundle_id,
+                signing_state="UNSIGNED",
+                notes=[f"manifest is not canonicalizable: {exc}"],
+            )
         return VerificationResult(
             status="VALID_UNSIGNED" if result.status == "VALID" else result.status,
             bundle_spec_version=result.bundle_spec_version,
@@ -339,7 +394,7 @@ def _verify_signature(
             notes=[*result.notes, "no signature member present"],
         )
     try:
-        signature = reader.read(SIGNATURE_MEMBER)
+        signature = _safe_read(reader, SIGNATURE_MEMBER)
     except KeyError:
         return VerificationResult(
             status="SIGNATURE_INVALID",
@@ -347,6 +402,14 @@ def _verify_signature(
             bundle_id=result.bundle_id,
             signing_state="SIGNED",
             notes=["signature member unreadable"],
+        )
+    except _MemberReadError as exc:
+        return VerificationResult(
+            status="MALFORMED_BUNDLE",
+            bundle_spec_version=result.bundle_spec_version,
+            bundle_id=result.bundle_id,
+            signing_state="SIGNED",
+            notes=[f"signature member unreadable: {exc}"],
         )
     if not trusted_keys:
         return VerificationResult(
@@ -490,7 +553,12 @@ def verify_bundle_bytes(
         EOFError,
         UnicodeError,
         RecursionError,
+        ValueError,
     ) as exc:
+        # ValueError is included as defense-in-depth: stdlib zipfile raises
+        # it for corrupt offsets/seeks (e.g. "negative seek value"). A
+        # malformed archive must fail closed as MALFORMED_BUNDLE, never
+        # crash the caller (Tur 3 fuzz finding).
         return _fail("MALFORMED_BUNDLE", [f"unreadable archive content: {exc}"])
 
 
@@ -517,6 +585,8 @@ def _verify_zip_bytes(
         try:
             manifest = _loads_manifest(_read_member(zf, "manifest.json"))
         except _ManifestParseError as exc:
+            return _fail("MALFORMED_BUNDLE", [f"manifest.json unreadable: {exc}"])
+        except _MemberReadError as exc:
             return _fail("MALFORMED_BUNDLE", [f"manifest.json unreadable: {exc}"])
         schema_errors = _manifest_schema_errors(manifest)
         if schema_errors:

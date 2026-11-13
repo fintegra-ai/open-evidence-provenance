@@ -299,6 +299,116 @@ def test_unknown_manifest_fields_ignored(tmp_path):
     assert result.status == "VALID_UNSIGNED"
 
 
+def _set_size(manifest, value) -> None:
+    for entry in manifest["files"]:
+        if entry["path"] == "evidence/a.txt":
+            entry["size_bytes"] = value
+
+
+def _manifest_with_raw(members_blob: bytes, mutate) -> bytes:
+    """Like _manifest_with, but writes the manifest as plain (non-canonical)
+    JSON, so a hostile producer's out-of-range integers reach the verifier
+    instead of failing at canonicalization time in the test itself."""
+    import json as _json
+
+    source = zipfile.ZipFile(io.BytesIO(members_blob))
+    manifest = _json.loads(source.read("manifest.json"))
+    mutate(manifest)
+    members = {
+        info.filename: source.read(info.filename)
+        for info in source.infolist()
+        if info.filename != "manifest.json"
+    }
+    members["manifest.json"] = _json.dumps(manifest).encode()
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(members):
+            archive.writestr(path, members[path])
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize("value", [2**53, 2**53 + 1, 10**21])
+def test_unsigned_out_of_range_integer_is_malformed(tmp_path, value):
+    # K4: the int-range check (|n| <= 2**53 - 1, the JSON safe-integer
+    # bound of the JCS canonical domain in oept.canonical) used to run
+    # only on the signed path, so an unsigned bundle with
+    # size_bytes=2**53 passed as VALID_UNSIGNED.
+    blob = _manifest_with_raw(_zip_bytes(_base()), lambda m: _set_size(m, value))
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "MALFORMED_BUNDLE"
+    assert any("canonicalizable" in note for note in result.notes)
+
+
+def test_unsigned_negative_size_is_malformed(tmp_path):
+    # Below the schema minimum of 0: rejected at schema validation,
+    # before the canonical-domain check (pre-existing behaviour).
+    blob = _manifest_with_raw(_zip_bytes(_base()), lambda m: _set_size(m, -(2**53)))
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "MALFORMED_BUNDLE"
+
+
+@pytest.mark.parametrize("value", [5, 2**53 - 1])
+def test_unsigned_boundary_integers_stay_valid(tmp_path, value):
+    # 2**53 - 1 is the largest exactly representable JCS integer and
+    # must stay VALID_UNSIGNED (5 is this fixture's true size_bytes).
+    blob = _manifest_with_raw(_zip_bytes(_base()), lambda m: _set_size(m, value))
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "VALID_UNSIGNED"
+
+
+def test_unsigned_out_of_range_integer_in_unknown_field_is_malformed(tmp_path):
+    # The check is the manifest-wide canonical-domain check, not a
+    # size_bytes-only rule: size_bytes is the only integer field the
+    # schema types, but an out-of-range integer anywhere in the
+    # manifest (here an unknown, schema-ignored field) is rejected
+    # exactly as on the signed path.
+    blob = _manifest_with_raw(
+        _zip_bytes(_base()),
+        lambda manifest: manifest.update({"future_field": {"n": 2**53}}),
+    )
+    result = verify_bundle(_write(tmp_path, blob))
+    assert result.status == "MALFORMED_BUNDLE"
+    assert any("canonicalizable" in note for note in result.notes)
+
+
+def test_signed_out_of_range_integer_is_malformed(tmp_path):
+    # Regression: the signed path already rejected this (canonicalize
+    # runs while verifying the signature). The signature here covers
+    # arbitrary bytes; the verifier canonicalizes the manifest before
+    # checking the signature, so it never reaches signature verification.
+    private_pem, _public_pem, keys = _keypair()
+    builder = _base(key_id="k1")
+    signature = sign_manifest(b"dummy", private_pem)
+    blob = _manifest_with_raw(_zip_bytes(builder, signature), lambda m: _set_size(m, 2**53))
+    result = verify_bundle(_write(tmp_path, blob), keys)
+    assert result.status == "MALFORMED_BUNDLE"
+    assert any("canonicalizable" in note for note in result.notes)
+
+
+def test_signed_boundary_integer_stays_valid(tmp_path):
+    # 2**53 - 1 signed: canonicalizes, and the signature over the
+    # canonical manifest bytes verifies.
+    from oept.canonical import canonicalize_json
+
+    private_pem, _public_pem, keys = _keypair()
+    builder = _base(key_id="k1")
+    manifest = builder.manifest_dict()
+    _set_size(manifest, 2**53 - 1)
+    manifest_bytes = canonicalize_json(manifest)
+    signature = sign_manifest(manifest_bytes, private_pem)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path in ("facts.json", "provenance.json", "evidence/a.txt"):
+            archive.writestr(
+                path,
+                {"facts.json": b"[]", "provenance.json": b"[]", "evidence/a.txt": b"hello"}[path],
+            )
+        archive.writestr("manifest.json", manifest_bytes)
+        archive.writestr("signatures/manifest.sig", signature)
+    result = verify_bundle(_write(tmp_path, buffer.getvalue()), keys)
+    assert result.status == "VALID_SIGNED"
+
+
 def test_trailing_data_after_central_directory(tmp_path):
     blob = _zip_bytes(_base()) + b"\x00" * 64
     result = verify_bundle(_write(tmp_path, blob))
@@ -461,3 +571,36 @@ def _append_member(blob: bytes, name: str, data: bytes) -> bytes:
     with zipfile.ZipFile(buffer, "a") as archive:
         archive.writestr(name, data)
     return buffer.getvalue()
+
+
+# --- Tur 3 regression: corrupt central-directory offsets must not crash ---
+# (fuzz finding: bench-crash-centraldir-0/1 — ZipFile.open raised
+# ValueError "negative seek value", uncaught. Must fail closed.)
+
+
+def _corrupt_central_offset(blob: bytes) -> bytes:
+    """Point the first central-directory entry at a bogus local header."""
+    eocd = blob.rfind(b"PK\x05\x06")
+    assert eocd >= 0
+    cd_offset = int.from_bytes(blob[eocd + 16 : eocd + 20], "little")
+    assert blob[cd_offset : cd_offset + 4] == b"PK\x01\x02"
+    # local-header offset field inside the central-directory record.
+    bad = bytearray(blob)
+    bad[cd_offset + 42 : cd_offset + 46] = (0x7FFFFFFF).to_bytes(4, "little")
+    return bytes(bad)
+
+
+def test_corrupt_central_offset_fails_closed():
+    blob = _corrupt_central_offset(_zip_bytes(_base()))
+    result = verify_bundle_bytes(blob)
+    assert result.status == "MALFORMED_BUNDLE"
+
+
+def test_corrupt_central_offset_signed_member_fails_closed():
+    private_pem, _public_pem, keys = _keypair()
+    builder = _base(unsigned=False, key_id="k1")
+    manifest = builder.manifest_bytes()
+    signature = sign_manifest(manifest, private_pem)
+    blob = _corrupt_central_offset(_zip_bytes(builder, signature))
+    result = verify_bundle_bytes(blob, keys)
+    assert result.status == "MALFORMED_BUNDLE"
